@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Triple-G Golf App</title>
-<link rel="icon" type="image/png" href="img/3g-icon.png">
-<link rel="apple-touch-icon" href="img/3g-icon.png">
+<link rel="icon" type="image/png" href="3g-icon.png">
+<link rel="apple-touch-icon" href="3g-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -409,7 +409,7 @@ function countdown(r){
 }
 
 /* ---------- pieces ---------- */
-const logo = () => '<img src="img/3g-logo.jpg" alt="3G Gentlemen\'s Golf Group crest, est. 2023" width="480" height="558">';
+const logo = () => '<img src="3g-logo.jpg" alt="3G Gentlemen\'s Golf Group crest, est. 2023" width="480" height="558">';
 function scene(){
   return `<svg class="scene" viewBox="0 0 560 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
   <defs><linearGradient id="hsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4a1c"/><stop offset=".45" stop-color="#c98a2c"/><stop offset=".62" stop-color="#e9b04a"/><stop offset="1" stop-color="#4d7a26"/></linearGradient>
@@ -1215,7 +1215,7 @@ V.finalize = () => {
 
 /* ---- More screen (FPG layout) ---- */
 function ltRow(href, icon, title, sub, gold){ return `<a href="${href}"${gold?' class="gold"':''}><span class="ic">${ICON[icon]}</span><span><b>${title}</b><span>${sub}</span></span><span class="chev" aria-hidden="true">›</span></a>`; }
-V.more = () => `<div class="topbar"><img src="img/3g-icon.png" alt="">Triple-G Tools</div><main>
+V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools</div><main>
   <div class="qa">
     <a class="big" href="#leaderboard">${ICON.bars}<b>Live Leaderboard</b><span>Real-time scores</span></a>
     <a href="#score">${ICON.edit}<b>Scorekeeper</b><span>Enter round scores</span></a>
@@ -1778,7 +1778,7 @@ const ERR = { 'auth/invalid-credential':'Email or password is not right.', 'auth
 const em = e => ERR[e?.code] || (e?.message || 'Something went wrong.');
 
 function loginForm(msg='', email=''){
-  showGate(`<div class="gbox"><img src="img/3g-logo.jpg" alt="3G Gentlemen's Golf Group crest" class="glogo">
+  showGate(`<div class="gbox"><img src="3g-logo.jpg" alt="3G Gentlemen's Golf Group crest" class="glogo">
     <h1>Triple-G Golf</h1><p class="muted">Sign in to check in, score and see the leaderboard.</p>
     <form id="gForm" class="form" novalidate>
       <label>Email<input type="email" id="gEmail" autocomplete="username" value="${esc(email)}" required></label>
