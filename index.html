@@ -652,7 +652,15 @@ const COURSE_SEED = {
   'timbergreens':     {name:'Timber Greens', pars:[4,3,4,4,4,5,4,3,4, 3,4,5,3,5,4,4,4,4], src:'1'},
   'westchase':        {name:'Westchase Golf Club', pars:[4,5,3,4,4,4,3,5,4, 5,3,4,5,4,3,4,4,4], src:'v'}
 };
+const cnorm = x => String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function courseExact(name){
+  const n = cnorm(name); if (!n) return null;
+  for (const [k,c] of Object.entries((typeof S!=='undefined' && S.courses) || {})) if (c && (cnorm(c.name)===n || (c.aliases||[]).some(a=>cnorm(a)===n))) return k;
+  for (const [k,c] of Object.entries(COURSE_SEED)) if (cnorm(c.name)===n) return k;
+  return null;
+}
 function courseKey(name){
+  const ex = courseExact(name); if (ex) return ex;
   const n = String(name||'').toLowerCase().replace(/[^a-z]/g,'');
   if (/heritage|hetitage/.test(n)) return /lutz/.test(n) ? 'heritageharbor' : 'heritagebradenton';
   if (/eagle/.test(n)) return 'eagleslakes';
@@ -665,11 +673,13 @@ function courseKey(name){
   for (const k of Object.keys(COURSE_SEED)) if (n.includes(k)) return k;
   return n || null;
 }
-function courseInfo(name){
-  const k = courseKey(name); const db = S.courses[k];
+function courseInfo(name){ return courseInfoK(courseKey(name), name); }
+function courseInfoK(k, name){
+  const db = S.courses[k];
   const seed = COURSE_SEED[k] || {name: (db && db.name) || name, pars:null};
-  if (db && Array.isArray(db.pars) && db.pars.length===18) return {key:k, name:seed.name, pars:db.pars, src:'club', by:db.by};
-  return {key:k, ...seed};
+  const nm = (db && db.name) || seed.name;
+  if (db && Array.isArray(db.pars) && db.pars.length===18) return {key:k, name:nm, pars:db.pars, src:'club', by:db.by};
+  return {key:k, ...seed, name:nm};
 }
 const PT_KEYS = [['albatross','Double eagle'],['eagle','Eagle'],['birdie','Birdie'],['par','Par'],['bogey','Bogey'],['double','Double bogey'],['worse','Triple or worse']];
 // 3G scale confirmed by Ray (Nov 6, 2026): double eagle 8, eagle 6, birdie 4, par 2, bogey 1, double bogey 0 (triple or worse 0).
@@ -1002,22 +1012,27 @@ V.courses = () => {
   ${isAdmin()?`<section class="card"><h2>Add a course</h2><div class="small muted" style="margin-bottom:8px">Type the course name, then enter its 18 hole pars from the scorecard. Courses you add to the Schedule also show up below.</div>
     <div class="row" style="flex-wrap:nowrap"><input type="text" id="cNewName" placeholder="Course name" aria-label="New course name" autocomplete="off" style="flex:1;min-width:0"><button class="btn gold" id="cAdd">Add course</button></div><div class="small" id="cAddMsg" role="status"></div></section>`:''}
   <section class="card" style="padding:4px 16px"><div class="list">
-  ${keys.map(k=>{ const c=courseInfo(NAMES[k]); const tot = c.pars ? c.pars.reduce((a,b)=>a+b,0) : null;
+  ${keys.map(k=>{ const c=courseInfoK(k, NAMES[k]); const tot = c.pars ? c.pars.reduce((a,b)=>a+b,0) : null;
     return `<div><button class="li crow" data-cedit="${k}" style="width:100%;background:none;border:0;text-align:left;cursor:pointer;color:inherit"><span class="ti" style="color:var(--green-2)">${ICON.flag.replace('<svg','<svg width="20" height="20"')}</span>
       <span><span class="name">${esc(c.name)}</span>${upcoming.has(k)?' <span class="pill neutral">Upcoming</span>':''}<div class="small muted">${tot?`Par ${tot}`:'No pars yet'}${played[k]?` · played ${played[k]}× in 2026`:''}</div></span>${status(c)}</button>
-      ${ed===k?`<div class="grp" style="margin:0 0 10px"><div class="pargrid">${Array.from({length:18},(_,i)=>`<label><i>${i+1}</i><input type="number" min="3" max="6" inputmode="numeric" data-par="${i}" value="${c.pars?c.pars[i]:''}" aria-label="Hole ${i+1} par"></label>`).join('')}</div>
-        <div class="row" style="margin-top:8px"><button class="btn" id="cSave" data-key="${k}" data-name="${esc(c.name)}" ${S.dbStatus==='ready'?'':'disabled'}>Save pars</button><span class="small" id="cMsg" role="status"></span></div>
-        <div class="small muted" style="margin-top:4px">Copy from the course scorecard. Leaders only.</div></div>`:''}</div>`; }).join('')}
+      ${ed===k?`<div class="grp" style="margin:0 0 10px">${isAdmin()?`<label class="small" style="display:block;font-weight:700;margin-bottom:8px">Course name<input type="text" id="cName" value="${esc(c.name)}" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:4px"></label>`:''}<div class="pargrid">${Array.from({length:18},(_,i)=>`<label><i>${i+1}</i><input type="number" min="3" max="6" inputmode="numeric" data-par="${i}" value="${c.pars?c.pars[i]:''}" aria-label="Hole ${i+1} par"></label>`).join('')}</div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="cSave" data-key="${k}" ${S.dbStatus==='ready'?'':'disabled'}>Save</button>${isAdmin() && !COURSE_SEED[k] && (S.courses||{})[k] ? `<button class="btn ghost danger" id="cDel" data-key="${k}">Remove course</button>`:''}<span class="small" id="cMsg" role="status"></span></div>
+        <div class="small muted" style="margin-top:4px">Copy the pars from the course scorecard. You can save a name change with the pars left blank. Leaders only.</div></div>`:''}</div>`; }).join('')}
   </div></section>
   <div class="banner">Single-rider cart notes were collected in 2020–21. Check with the pro shop before relying on them.</div>
   ${Object.entries(by).map(([k,l])=>`<section class="card"><h2>${esc(k)} cart notes</h2><div class="list">${l.map(x=>`<div class="li" style="grid-template-columns:1fr"><div><div class="name">${esc(x.course)}</div><div class="small muted">${esc(x.note)}</div></div></div>`).join('')}</div></section>`).join('')}</main>`;
 };
 
 document.addEventListener('click', async e=>{
-  const b = e.target.closest('[data-hole],[data-step],[data-open],[data-cedit],#ptsSave,#cSave,#cAdd'); if (!b) return;
+  const b = e.target.closest('[data-hole],[data-step],[data-open],[data-cedit],#ptsSave,#cSave,#cAdd,#cDel'); if (!b) return;
   if (b.id==='cAdd'){ const name=($('#cNewName').value||'').trim().replace(/\s+/g,' '); if (name.length<3){ live$('cAddMsg').textContent='Type the course name first.'; return; }
-    const k=courseKey(name); if (!k){ live$('cAddMsg').textContent='Use letters in the course name.'; return; }
-    S.cNew={k, name}; S.cEdit=k; render(); document.querySelector('[data-par="0"]')?.focus(); return; }
+    const n=cnorm(name); if (!n){ live$('cAddMsg').textContent='Use letters in the course name.'; return; }
+    const ex=courseExact(name);
+    if (ex){ S.cEdit=ex; render(); live$('cAddMsg').textContent=`${courseInfo(name).name} is already in the list. It's open below.`; return; }
+    const k='x'+n; S.cNew={k, name}; S.cEdit=k; render(); document.querySelector('[data-par="0"]')?.focus(); live$('cAddMsg').textContent='Now enter the 18 pars below and tap Save.'; return; }
+  if (b.id==='cDel'){ const k=b.dataset.key, nm=(S.courses[k]||{}).name||'this course';
+    if (!await ask(`Remove ${nm}? Rounds already played there keep their scores.`)) return;
+    try{ await S.db.doc('courses/'+k).delete(); S.cEdit=null; if (S.cNew&&S.cNew.k===k) S.cNew=null; render(); }catch(err){ live$('cMsg').textContent=noWrite; } return; }
   if (b.dataset.hole){ S.lbHole=+b.dataset.hole; render(); }
   else if (b.dataset.step){ S.lbHole=Math.min(18,Math.max(1,(S.lbHole||1)+(+b.dataset.step))); render(); }
   else if (b.dataset.open){ S.lbOpen = S.lbOpen===b.dataset.open ? null : b.dataset.open; render(); }
@@ -1032,10 +1047,20 @@ document.addEventListener('click', async e=>{
     catch(err){ live$('ptsMsg').textContent=noWrite; b.disabled=false; }
   }
   else if (b.id==='cSave'){
-    const pars=[...document.querySelectorAll('[data-par]')].map(el=>+el.value);
-    if (pars.some(p=>!Number.isInteger(p)||p<3||p>6)){ live$('cMsg').textContent='Every hole needs a par of 3, 4, 5 or 6.'; return; }
+    const k=b.dataset.key, old=S.courses[k]||{}, seed=COURSE_SEED[k];
+    const prevName = old.name || (seed && seed.name) || (S.cNew&&S.cNew.k===k ? S.cNew.name : '');
+    const name = (($('#cName')||{}).value ?? prevName).trim().replace(/\s+/g,' ') || prevName;
+    const raw=[...document.querySelectorAll('[data-par]')].map(el=>el.value.trim());
+    const blank = raw.every(v=>v==='');
+    const pars = raw.map(Number);
+    if (!blank && pars.some(p=>!Number.isInteger(p)||p<3||p>6)){ live$('cMsg').textContent='Every hole needs a par of 3, 4, 5 or 6 (or leave all 18 blank to save just the name).'; return; }
+    if (!name){ live$('cMsg').textContent='Give the course a name.'; return; }
+    const clash = courseExact(name); if (clash && clash!==k){ live$('cMsg').textContent=`Another course is already named ${name}.`; return; }
+    const aliases = [...new Set([...(old.aliases||[]), ...(prevName && cnorm(prevName)!==cnorm(name) ? [prevName] : [])])];
+    const docv = {key:k, name, aliases, by:S.meFull||'', at:new Date().toISOString()};
+    if (!blank) docv.pars = pars; else if (Array.isArray(old.pars)) docv.pars = old.pars;
     b.disabled=true; live$('cMsg').textContent='Saving…';
-    try{ await S.db.doc('courses/'+b.dataset.key).set({key:b.dataset.key, name:b.dataset.name||'', pars, by:S.meFull||'', at:new Date().toISOString()}); live$('cMsg').textContent=`Saved · par ${pars.reduce((a,c)=>a+c,0)}.`; }
+    try{ await S.db.doc('courses/'+k).set(docv); if (S.cNew&&S.cNew.k===k) S.cNew=null; live$('cMsg').textContent = docv.pars ? `Saved · par ${docv.pars.reduce((a,c)=>a+c,0)}.` : 'Name saved. Add the pars when you have the scorecard.'; b.disabled=false; }
     catch(err){ live$('cMsg').textContent=noWrite; b.disabled=false; }
   }
 });
@@ -1344,7 +1369,7 @@ function applySched(){
   const nr = nextRound(), want = nr ? nr.date : todayISO();
   if (S.db && want !== S.ciDate) subRound(want);
 }
-function knownCourses(){ return [...new Set([...Object.values(COURSE_SEED).map(c=>c.name), ...SEED.schedule.map(r=>r.course)].filter(Boolean))].sort(); }
+function knownCourses(){ return [...new Set([...Object.keys(COURSE_SEED).map(k=>courseInfo(COURSE_SEED[k].name).name), ...Object.values(S.courses||{}).map(c=>c&&c.name), ...SEED.schedule.map(r=>r.course)].filter(Boolean))].sort(); }
 
 V.admin = () => `<main>${back()}<div class="pagehead"><h1>Admin</h1></div>
   <div class="muted">Changes here update the app for everyone. Leaders only.</div>${dbNote()}
