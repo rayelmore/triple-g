@@ -666,8 +666,8 @@ function courseKey(name){
   return n || null;
 }
 function courseInfo(name){
-  const k = courseKey(name); const seed = COURSE_SEED[k] || {name: name, pars:null};
-  const db = S.courses[k];
+  const k = courseKey(name); const db = S.courses[k];
+  const seed = COURSE_SEED[k] || {name: (db && db.name) || name, pars:null};
   if (db && Array.isArray(db.pars) && db.pars.length===18) return {key:k, name:seed.name, pars:db.pars, src:'club', by:db.by};
   return {key:k, ...seed};
 }
@@ -989,18 +989,24 @@ V.points = () => { const T = ptTable(); const ex = [[4,'Par 4 birdie',3],[4,'Par
 V.courses = () => {
   const played={}; allRounds().forEach(r=>{ const k=courseKey(r.course); played[k]=(played[k]||0)+1; });
   const upcoming = new Set(SEED.schedule.filter(r=>r.date>=todayISO()).map(r=>courseKey(r.course)));
-  const keys = Object.keys(COURSE_SEED).sort((a,b)=>(upcoming.has(b)-upcoming.has(a)) || COURSE_SEED[a].name.localeCompare(COURSE_SEED[b].name));
+  const NAMES = {}; Object.entries(COURSE_SEED).forEach(([k,c])=>NAMES[k]=c.name);
+  Object.entries(S.courses||{}).forEach(([k,c])=>{ if (!NAMES[k] && c && c.name) NAMES[k]=c.name; });
+  SEED.schedule.forEach(r=>{ const k=courseKey(r.course); if (k && !NAMES[k] && r.course) NAMES[k]=r.course; });
+  if (S.cNew && !NAMES[S.cNew.k]) NAMES[S.cNew.k]=S.cNew.name;
+  const keys = Object.keys(NAMES).sort((a,b)=>(upcoming.has(b)-upcoming.has(a)) || NAMES[a].localeCompare(NAMES[b]));
   const ed = S.cEdit;
   const by={}; SEED.cart.forEach(x=>(by[x.county] ||= []).push(x));
   const status = c => c.src==='club' ? '<span class="pill good">Set by club</span>' : c.src==='v' ? '<span class="pill good">Verified</span>' : c.src==='1' ? '<span class="pill warn">Check card</span>' : '<span class="pill bad">Needs pars</span>';
   return `<main><div class="pagehead"><h1>Courses</h1></div>
   <div class="small muted">Hole pars drive live scoring. "Verified" means two public scorecards agree; "Check card" came from one source. Tap a course to see or fix its pars.</div>
+  ${isAdmin()?`<section class="card"><h2>Add a course</h2><div class="small muted" style="margin-bottom:8px">Type the course name, then enter its 18 hole pars from the scorecard. Courses you add to the Schedule also show up below.</div>
+    <div class="row" style="flex-wrap:nowrap"><input type="text" id="cNewName" placeholder="Course name" aria-label="New course name" autocomplete="off" style="flex:1;min-width:0"><button class="btn gold" id="cAdd">Add course</button></div><div class="small" id="cAddMsg" role="status"></div></section>`:''}
   <section class="card" style="padding:4px 16px"><div class="list">
-  ${keys.map(k=>{ const c=courseInfo(COURSE_SEED[k].name); const tot = c.pars ? c.pars.reduce((a,b)=>a+b,0) : null;
+  ${keys.map(k=>{ const c=courseInfo(NAMES[k]); const tot = c.pars ? c.pars.reduce((a,b)=>a+b,0) : null;
     return `<div><button class="li crow" data-cedit="${k}" style="width:100%;background:none;border:0;text-align:left;cursor:pointer;color:inherit"><span class="ti" style="color:var(--green-2)">${ICON.flag.replace('<svg','<svg width="20" height="20"')}</span>
       <span><span class="name">${esc(c.name)}</span>${upcoming.has(k)?' <span class="pill neutral">Upcoming</span>':''}<div class="small muted">${tot?`Par ${tot}`:'No pars yet'}${played[k]?` · played ${played[k]}× in 2026`:''}</div></span>${status(c)}</button>
       ${ed===k?`<div class="grp" style="margin:0 0 10px"><div class="pargrid">${Array.from({length:18},(_,i)=>`<label><i>${i+1}</i><input type="number" min="3" max="6" inputmode="numeric" data-par="${i}" value="${c.pars?c.pars[i]:''}" aria-label="Hole ${i+1} par"></label>`).join('')}</div>
-        <div class="row" style="margin-top:8px"><button class="btn" id="cSave" data-key="${k}" ${S.dbStatus==='ready'?'':'disabled'}>Save pars</button><span class="small" id="cMsg" role="status"></span></div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="cSave" data-key="${k}" data-name="${esc(c.name)}" ${S.dbStatus==='ready'?'':'disabled'}>Save pars</button><span class="small" id="cMsg" role="status"></span></div>
         <div class="small muted" style="margin-top:4px">Copy from the course scorecard. Leaders only.</div></div>`:''}</div>`; }).join('')}
   </div></section>
   <div class="banner">Single-rider cart notes were collected in 2020–21. Check with the pro shop before relying on them.</div>
@@ -1008,7 +1014,10 @@ V.courses = () => {
 };
 
 document.addEventListener('click', async e=>{
-  const b = e.target.closest('[data-hole],[data-step],[data-open],[data-cedit],#ptsSave,#cSave'); if (!b) return;
+  const b = e.target.closest('[data-hole],[data-step],[data-open],[data-cedit],#ptsSave,#cSave,#cAdd'); if (!b) return;
+  if (b.id==='cAdd'){ const name=($('#cNewName').value||'').trim().replace(/\s+/g,' '); if (name.length<3){ live$('cAddMsg').textContent='Type the course name first.'; return; }
+    const k=courseKey(name); if (!k){ live$('cAddMsg').textContent='Use letters in the course name.'; return; }
+    S.cNew={k, name}; S.cEdit=k; render(); document.querySelector('[data-par="0"]')?.focus(); return; }
   if (b.dataset.hole){ S.lbHole=+b.dataset.hole; render(); }
   else if (b.dataset.step){ S.lbHole=Math.min(18,Math.max(1,(S.lbHole||1)+(+b.dataset.step))); render(); }
   else if (b.dataset.open){ S.lbOpen = S.lbOpen===b.dataset.open ? null : b.dataset.open; render(); }
@@ -1026,7 +1035,7 @@ document.addEventListener('click', async e=>{
     const pars=[...document.querySelectorAll('[data-par]')].map(el=>+el.value);
     if (pars.some(p=>!Number.isInteger(p)||p<3||p>6)){ live$('cMsg').textContent='Every hole needs a par of 3, 4, 5 or 6.'; return; }
     b.disabled=true; live$('cMsg').textContent='Saving…';
-    try{ await S.db.doc('courses/'+b.dataset.key).set({key:b.dataset.key, pars, by:S.meFull||'', at:new Date().toISOString()}); live$('cMsg').textContent=`Saved · par ${pars.reduce((a,c)=>a+c,0)}.`; }
+    try{ await S.db.doc('courses/'+b.dataset.key).set({key:b.dataset.key, name:b.dataset.name||'', pars, by:S.meFull||'', at:new Date().toISOString()}); live$('cMsg').textContent=`Saved · par ${pars.reduce((a,c)=>a+c,0)}.`; }
     catch(err){ live$('cMsg').textContent=noWrite; b.disabled=false; }
   }
 });
