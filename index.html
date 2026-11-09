@@ -1006,15 +1006,16 @@ V.courses = () => {
   const keys = Object.keys(NAMES).sort((a,b)=>(upcoming.has(b)-upcoming.has(a)) || NAMES[a].localeCompare(NAMES[b]));
   const ed = S.cEdit;
   const by={}; SEED.cart.forEach(x=>(by[x.county] ||= []).push(x));
-  const status = c => c.src==='club' ? '<span class="pill good">Set by club</span>' : c.src==='v' ? '<span class="pill good">Verified</span>' : c.src==='1' ? '<span class="pill warn">Check card</span>' : '<span class="pill bad">Needs pars</span>';
+  const verified = (k, c) => { const sd=COURSE_SEED[k]; return !!(sd && sd.src==='v' && sd.pars && c.pars && c.pars.join()===sd.pars.join()); };
+  const status = (k, c) => verified(k, c) ? '<span class="pill good">Verified</span>' : '';
   return `<main><div class="pagehead"><h1>Courses</h1></div>
-  <div class="small muted">Hole pars drive live scoring. "Verified" means two public scorecards agree; "Check card" came from one source. Tap a course to see or fix its pars.</div>
+  <div class="small muted">Hole pars drive live scoring. "Verified" means two online scorecards agree with these pars. Tap a course to see or fix its pars.</div>
   ${isAdmin()?`<section class="card"><h2>Add a course</h2><div class="small muted" style="margin-bottom:8px">Type the course name, then enter its 18 hole pars from the scorecard. Courses you add to the Schedule also show up below.</div>
     <div class="row" style="flex-wrap:nowrap"><input type="text" id="cNewName" placeholder="Course name" aria-label="New course name" autocomplete="off" style="flex:1;min-width:0"><button class="btn gold" id="cAdd">Add course</button></div><div class="small" id="cAddMsg" role="status"></div></section>`:''}
   <section class="card" style="padding:4px 16px"><div class="list">
   ${keys.map(k=>{ const c=courseInfoK(k, NAMES[k]); const tot = c.pars ? c.pars.reduce((a,b)=>a+b,0) : null;
     return `<div><button class="li crow" data-cedit="${k}" style="width:100%;background:none;border:0;text-align:left;cursor:pointer;color:inherit"><span class="ti" style="color:var(--green-2)">${ICON.flag.replace('<svg','<svg width="20" height="20"')}</span>
-      <span><span class="name">${esc(c.name)}</span>${upcoming.has(k)?' <span class="pill neutral">Upcoming</span>':''}<div class="small muted">${tot?`Par ${tot}`:'No pars yet'}${played[k]?` · played ${played[k]}× in 2026`:''}</div></span>${status(c)}</button>
+      <span><span class="name">${esc(c.name)}</span>${upcoming.has(k)?' <span class="pill neutral">Upcoming</span>':''}<div class="small muted">${tot?`Par ${tot}`:'No pars yet'}${played[k]?` · played ${played[k]}× in 2026`:''}</div></span>${status(k, c)}</button>
       ${ed===k?`<div class="grp" style="margin:0 0 10px">${isAdmin()?`<label class="small" style="display:block;font-weight:700;margin-bottom:8px">Course name<input type="text" id="cName" value="${esc(c.name)}" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:4px"></label>`:''}<div class="pargrid">${Array.from({length:18},(_,i)=>`<label><i>${i+1}</i><input type="number" min="3" max="6" inputmode="numeric" data-par="${i}" value="${c.pars?c.pars[i]:''}" aria-label="Hole ${i+1} par"></label>`).join('')}</div>
         <div class="row" style="margin-top:8px"><button class="btn" id="cSave" data-key="${k}" ${S.dbStatus==='ready'?'':'disabled'}>Save</button>${isAdmin() && !COURSE_SEED[k] && (S.courses||{})[k] ? `<button class="btn ghost danger" id="cDel" data-key="${k}">Remove course</button>`:''}<span class="small" id="cMsg" role="status"></span></div>
         <div class="small muted" style="margin-top:4px">Copy the pars from the course scorecard. You can save a name change with the pars left blank. Leaders only.</div></div>`:''}</div>`; }).join('')}
