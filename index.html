@@ -1341,6 +1341,7 @@ V.admin = () => `<main>${back()}<div class="pagehead"><h1>Admin</h1></div>
   <div class="muted">Changes here update the app for everyone. Leaders only.</div>${dbNote()}
   <section class="card"><div class="lt">
     ${ltRow('#admmembers','users','Members','Add, edit or deactivate members')}
+    ${ltRow('#adminvite','users','Bulk Invite','Create logins for many members at once')}
     ${ltRow('#admcheckin','check','Check-in Manager','Check players in or out for this week')}
     ${ltRow('#admsched','check','Schedule','Add, change or cancel rounds')}
   </div></section></main>`;
@@ -1484,7 +1485,96 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['admin','admmembers','admsched','admcheckin','expenses','coordinator','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['admin','admmembers','adminvite','admsched','admcheckin','expenses','coordinator','finalize','points','scorekeeper','pairtool','pairings']);
+
+/* ---- Admin: bulk invite (create many logins at once) ---- */
+const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
+function biState(){ return S.bi || (S.bi = {map:{}, sel:{}, st:{}, unmatched:[], paste:'', running:false}); }
+function biPool(){ return SEED.players.filter(p=>!p.inactive && !p.guest && !(S.guestBook||{})[p.id]); }
+function biMatch(name){
+  const n = name.toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim(); if (!n) return null;
+  const pool = biPool(), k = key(n);
+  let hit = pool.filter(p=>key(p.name)===k || key(p.display||'')===k);
+  if (hit.length!==1) hit = pool.filter(p=>nick(p.name) && nick(p.name).toLowerCase().replace(/[^a-z ]/g,'').trim()===n);
+  if (hit.length!==1){ const w=n.split(' '); if (w.length>1){ const f=w[0][0], l=w[w.length-1]; hit = pool.filter(p=>{ const s=splitName(p.name); return s.last.toLowerCase().replace(/[^a-z ]/g,'').split(' ').pop()===l && s.first.toLowerCase().startsWith(f); }); } }
+  return hit.length===1 ? hit[0] : null;
+}
+function biEmail(p){ const b=biState(); return (b.map[p.id] ?? p.email ?? '').trim().toLowerCase(); }
+V.adminvite = () => {
+  const b = biState(), linked = new Set(Object.values(S.users||{}).map(u=>u.pid));
+  const pool = biPool().filter(p=>!linked.has(p.id)).sort((x,y)=>(x.guest-y.guest) || shortName(x.name).localeCompare(shortName(y.name)));
+  const have = biPool().filter(p=>linked.has(p.id)).length;
+  const ok = p => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(biEmail(p));
+  const isSel = p => b.sel[p.id] ?? ok(p);
+  const n = pool.filter(p=>isSel(p) && ok(p) && b.st[p.id]!=='done').length;
+  return `<main><a href="#admin" class="small">← Admin</a><div class="pagehead"><h1>Bulk Invite</h1></div>${dbNote()}
+  <div class="muted">Creates a login for each checked member and emails them a link to set their password. ${have} member${have===1?' already has a login':'s already have logins'}.</div>
+  <section class="card"><h2>1. Paste emails (optional)</h2>
+    <div class="small muted" style="margin-bottom:8px">Copy the name and email columns from the scorebook, or a contact list, and paste here. One person per line, like <b>Calvin Smith, calvin@email.com</b>. Or skip this and type emails in the list below.</div>
+    <textarea id="biPaste" rows="5" style="width:100%;box-sizing:border-box;font:14px var(--body)" placeholder="Name, email&#10;Name, email">${esc(b.paste)}</textarea>
+    <button class="btn" id="biMatch" style="margin-top:8px">Match to members</button>
+    ${b.unmatched.length?`<div class="banner" style="margin-top:10px"><b>Couldn’t match ${b.unmatched.length}:</b> ${b.unmatched.map(esc).join('; ')}. Type those emails in the list below.</div>`:''}
+  </section>
+  <section class="card"><h2>2. Check who to invite</h2>
+    <div class="row" style="margin-bottom:6px"><button class="linkbtn" id="biAll">Check all with email</button><button class="linkbtn" id="biNone">Uncheck all</button></div>
+    <div class="list">${pool.length ? pool.map(p=>{ const st=b.st[p.id]||''; return `<div class="li" style="grid-template-columns:auto 1fr;align-items:center">
+      <input type="checkbox" data-bisel="${p.id}" ${isSel(p)&&st!=='done'?'checked':''} ${st==='done'?'disabled':''} aria-label="Invite ${esc(shortName(p.name))}" style="width:20px;height:20px">
+      <div><div class="name">${esc(shortName(p.name))}${p.guest?' <span class="pill neutral">Guest</span>':''}</div>
+        <input type="email" data-biem="${p.id}" value="${esc(biEmail(p))}" placeholder="email" ${st==='done'?'disabled':''} style="width:100%;box-sizing:border-box;margin-top:4px" aria-label="Email for ${esc(shortName(p.name))}">
+        <div class="small" id="bist-${p.id}">${st==='done'?'<span class="pill good">Invited</span>':st?esc(st):''}</div></div></div>`; }).join('') : '<div class="li"><span class="muted">Everyone active already has a login.</span></div>'}</div>
+  </section>
+  <section class="card"><h2>3. Send</h2>
+    <div class="small muted" style="margin-bottom:8px">Everyone is added as a Member. Change anyone to Leader later in Members → Edit. The emails may land in spam, so give the group a heads-up.</div>
+    <button class="btn gold big" id="biGo" ${n&&!b.running&&S.dbStatus==='ready'?'':'disabled'}>${b.running?'Sending…':`Create ${n} login${n===1?'':'s'} &amp; send invites`}</button>
+    <div class="small" id="biMsg" role="status"></div>
+  </section></main>`;
+};
+document.addEventListener('input', e=>{
+  const t=e.target; if (!S.bi) biState();
+  if (t.id==='biPaste') S.bi.paste=t.value;
+  else if (t.dataset && t.dataset.biem){ S.bi.map[t.dataset.biem]=t.value; const cb=document.querySelector(`[data-bisel="${t.dataset.biem}"]`); if (cb && EMRX.test(t.value) && S.bi.sel[t.dataset.biem]===undefined) cb.checked=true; }
+});
+document.addEventListener('change', e=>{ const t=e.target; if (t.dataset && t.dataset.bisel){ biState().sel[t.dataset.bisel]=t.checked; render(); } });
+document.addEventListener('click', async e=>{
+  const t=e.target.closest('#biMatch,#biAll,#biNone,#biGo'); if (!t) return; const b=biState();
+  if (t.id==='biMatch'){
+    b.unmatched=[]; let got=0;
+    b.paste.split(/\r?\n/).forEach(line=>{ const m=line.match(EMRX); if (!m) return; const email=m[0].toLowerCase();
+      const name=line.replace(m[0],' ').replace(/[\t,;:<>"'|]/g,' ').trim(); const p=biMatch(name);
+      if (p){ b.map[p.id]=email; delete b.sel[p.id]; got++; } else b.unmatched.push(name ? `${name} (${email})` : email); });
+    render(); live$('biMsg').textContent = `Matched ${got} email${got===1?'':'s'}.`; return; }
+  if (t.id==='biAll'){ biPool().forEach(p=>{ delete b.sel[p.id]; }); render(); return; }
+  if (t.id==='biNone'){ biPool().forEach(p=>{ b.sel[p.id]=false; }); render(); return; }
+  if (t.id==='biGo'){
+    const F=window.TG_FB; if (!F) return;
+    const linked = new Set(Object.values(S.users||{}).map(u=>u.pid)), used = new Set(Object.values(S.users||{}).map(u=>u.email));
+    const list = biPool().filter(p=>!linked.has(p.id) && (b.sel[p.id] ?? true) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(biEmail(p)) && b.st[p.id]!=='done');
+    const dupes = list.map(biEmail).filter((x,i,a)=>a.indexOf(x)!==i);
+    if (dupes.length){ live$('biMsg').textContent=`The same email is used twice: ${[...new Set(dupes)].join(', ')}. Fix that first.`; return; }
+    if (!await ask(`Create ${list.length} logins and email each person a link to set their password?`)) return;
+    b.running=true; render(); let done=0, bad=0;
+    const say = (id,txt) => { const el=document.getElementById('bist-'+id); if (el) el.textContent=txt; };
+    for (const p of list){
+      const email=biEmail(p);
+      if (used.has(email)){ b.st[p.id]='That email is already linked to another member.'; say(p.id,b.st[p.id]); bad++; continue; }
+      say(p.id,'Creating login…');
+      try{
+        const pw = Array.from(crypto.getRandomValues(new Uint8Array(18)), x=>('0'+x.toString(16)).slice(-2)).join('')+'Aa1!';
+        const c = await F.createUserWithEmailAndPassword(F.auth2, email, pw); const uid=c.user.uid; await F.signOut(F.auth2);
+        await S.db.doc('users/'+uid).set({role:'member', pid:p.id, email, name:shortName(p.name), by:S.meFull, at:new Date().toISOString()});
+        await F.sendPasswordResetEmail(F.auth, email);
+        if ((p.email||'').toLowerCase()!==email){ const s=splitName(p.name); const r=(S.roster||{})[p.id]||{};
+          try{ await S.db.doc('roster/'+p.id).set({id:p.id, first:r.first??s.first, last:r.last??s.last, nick:r.nick??s.nick, phone:p.phone||'', email, member:!p.guest, auto:!!p.auto, inactive:!!p.inactive, by:S.meFull||'', at:new Date().toISOString()}); }catch(_){} }
+        b.st[p.id]='done'; used.add(email); done++; say(p.id,'Invited ✓');
+      }catch(err){
+        b.st[p.id] = err?.code==='auth/email-already-in-use' ? 'That email already has a login. Remove it in Firebase → Authentication → Users, or use Members → Edit.' : err?.code==='auth/too-many-requests' ? 'Firebase paused us for sending too fast. Wait 15 minutes and press Send again.' : ('Could not invite: '+(err?.code||err?.message||'error'));
+        say(p.id,b.st[p.id]); bad++; if (err?.code==='auth/too-many-requests') break;
+      }
+      await new Promise(r=>setTimeout(r,1200));
+    }
+    b.running=false; render(); live$('biMsg').textContent = `Done: ${done} invited${bad?`, ${bad} need attention (see the notes in the list)`:''}. Tell everyone to check spam.`;
+  }
+});
 
 /* ---- logins (Firebase Auth) ---- */
 function userFor(pid){ return Object.values(S.users||{}).find(u=>u.pid===pid); }
@@ -1527,7 +1617,7 @@ document.addEventListener('click', async e=>{
 });
 
 /* ---------- router ---------- */
-const TABS = {home:'home',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',coordinator:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',coordinator:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
