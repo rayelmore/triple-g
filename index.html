@@ -287,6 +287,11 @@ tr.tap{cursor:pointer}
 
 
 @media (max-width:380px){.hero h1{font-size:32px}.next .course{font-size:24px}.datebox{width:84px;height:84px}}
+.gsug{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.gsug:empty{display:none}
+.gsug button{text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--gold-soft);color:var(--ink);font:inherit;font-size:15px;cursor:pointer}
+.gsug button span{display:block;font-size:13px;color:var(--muted)}
+.gsug .gpicked{font-size:14px;padding:4px 2px}
 </style>
 </head>
 <body class="gated">
@@ -1495,6 +1500,16 @@ V.admcheckin = () => {
   return `<main><a href="#admin" class="small">← Admin</a><div class="pagehead"><h1>Check-in Manager</h1></div>
   <div class="muted">${fmt(d,{weekday:'long',month:'short',day:'numeric'})}${sch?` · ${esc(sch.course)}`:''}</div>${dbNote()}${deadlineLine()}
   <div class="stat3"><div><b>${nIn}</b><span>checked in</span></div><div><b>${ids.filter(id=>inGame(id,'skins')).length}</b><span>in skins</span></div><div><b>${ids.filter(id=>inGame(id,'ctp')).length}</b><span>in CTP</span></div></div>
+  <section class="card"><h2>Add a guest for a member</h2>
+    <div class="small muted">Use this when a member asks you to put his visitor down.</div>
+    <label class="small" for="agHost" style="font-weight:700;display:block;margin-top:8px">Guest of</label>
+    <select id="agHost" style="width:100%"><option value="">Choose the member…</option>${SEED.players.filter(p=>!p.guest && !p.inactive).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name))).map(p=>`<option value="${p.id}"${p.id===S.ag.host?' selected':''}>${esc(shortName(p.name))}</option>`).join('')}</select>
+    <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input type="text" id="agFirst" placeholder="First name" aria-label="Guest first name (leader)" autocomplete="off" value="${esc(S.ag.first||'')}" style="flex:1;min-width:0"><input type="text" id="agLast" placeholder="Last name" aria-label="Guest last name (leader)" autocomplete="off" value="${esc(S.ag.last||'')}" style="flex:1;min-width:0"><button class="btn gold" id="agAdd" ${S.dbStatus==='ready'?'':'disabled'}>Add</button></div>
+    <div class="small muted" style="margin-top:4px">Start typing. If he has played with us before, tap his name when it pops up.</div>
+    <div class="gsug" id="agSug" aria-live="polite">${(()=>{ try{ return guestSugHTML('ag'); }catch(e){ return ''; } })()}</div>
+    <div class="gline"><span class="small">Guest plays:</span><label class="small"><input type="checkbox" id="agSk" ${S.ag.skins===false?'':'checked'}> Skins</label><label class="small"><input type="checkbox" id="agCt" ${S.ag.ctp===false?'':'checked'}> CTP</label></div>
+    <div class="small" id="agMsg" role="status"></div>
+  </section>
   <div class="seg" role="group" aria-label="Show">${[['all','Everyone'],['in','In'],['out','Not in'],['regs','Regulars']].map(([k,l])=>`<button data-acf="${k}" aria-pressed="${f===k}">${l}</button>`).join('')}</div>
   <input type="search" id="acq" value="${esc(S.acq||'')}" placeholder="Find a player" aria-label="Find a player">
   <section class="card" style="padding:0 14px"><div class="pick acpick">
@@ -1737,7 +1752,7 @@ function registerGuest(g){
   if (!g || !g.id) return;
   const name = `${g.first} ${g.last}`.trim();
   if (!PBY[g.id]){ const p = {id:g.id, name, display:name, guest:true, scores:{}, prior:[], host:g.host}; SEED.players.push(p); PBY[g.id]=p; }
-  else { PBY[g.id].name = name; PBY[g.id].host = g.host; }
+  else { if (!g.seed) PBY[g.id].name = name; PBY[g.id].host = g.host; }
   SNAME[g.id] = `${g.first} ${String(g.last||'')[0]||''}.`.replace(/ \.$/,'');
 }
 function meId(){
@@ -1749,6 +1764,44 @@ function meId(){
 }
 function setMe(id){ if (S.meLocked) return; S.meId=id; try{ localStorage.setItem('3g-me', id); }catch(e){} }
 const guestsToday = () => Object.values(S.guestsIn||{});
+
+/* ---------- guest name suggestions (past guests from the app and the old scorebook) ---------- */
+S.gPick = {}; S.ag = {host:'', skins:true, ctp:true};
+function guestSplit(n){ const w = shortName(n).replace(/[?"]/g,' ').trim().split(/\s+/).filter(Boolean); return {first:w[0]||'', last:w.slice(1).join(' ')}; }
+function guestPool(){
+  const out=[], seen=new Set(), book=S.guestBook||{};
+  const add=(id, first, last, label, seed)=>{ const k=key(first+' '+last); if (!k || seen.has(k)) return; seen.add(k);
+    const p=PBY[id], st=p?stats(p):null, n=st?st.rounds:0;
+    const host=p&&p.host&&PBY[p.host]?shortName(PBY[p.host].name):'';
+    const sub=[n?`${n} round${n>1?'s':''} with us`:'No rounds yet', st&&st.quota!==null?`quota ${st.quota}`:'', host?`last brought by ${host}`:''].filter(Boolean).join(' · ');
+    out.push({id, first, last, label, sub, seed, k, hay:(label+' '+first+' '+last).toLowerCase()}); };
+  Object.values(book).forEach(g=>{ if (g && g.id) add(g.id, g.first, g.last, `${g.first} ${g.last}`, false); });
+  SEED.players.filter(p=>p.guest && !p.inactive && !book[p.id] && !String(p.id).startsWith('g')).forEach(p=>{ const s=guestSplit(p.name); add(p.id, s.first, s.last, p.name, true); });
+  return out;
+}
+function memberMatch(first, last){ const k=key(first+' '+last); return k ? SEED.players.find(p=>!p.guest && !p.inactive && key(p.name)===k) : null; }
+function guestSugHTML(px){
+  const f=(px==='ag' ? (S.ag.first||'') : ($('#'+px+'First')?.value||'')).trim(), l=(px==='ag' ? (S.ag.last||'') : ($('#'+px+'Last')?.value||'')).trim();
+  const pick=S.gPick[px]; const pool=guestPool();
+  if (pick){ const g=pool.find(x=>x.id===pick); if (g) return `<div class="gpicked">✓ <b>${esc(g.label)}</b> — returning guest (${esc(g.sub)})</div>`; }
+  const q=(f+' '+l).toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).filter(Boolean);
+  if (!q.length || (f+l).length<2) return '';
+  const m=memberMatch(f,l);
+  if (m && f && l) return `<div class="gpicked">${esc(shortName(m.name))} is a member, not a guest. Check him in from the list instead.</div>`;
+  const inToday=S.guestsIn||{};
+  const hits=pool.filter(g=>!inToday[g.id] && q.every(t=>g.hay.split(/[^a-z]+/).some(w=>w.startsWith(t)))).slice(0,6);
+  if (!hits.length) return f&&l ? `<div class="gpicked muted">New guest — tap Add to put <b>${esc(f)} ${esc(l)}</b> down.</div>` : '';
+  return `<div class="small muted">Played with us before? Tap the name:</div>` + hits.map(g=>`<button type="button" data-gsug="${px}|${esc(g.id)}">${esc(g.label)}<span>${esc(g.sub)}</span></button>`).join('');
+}
+function drawGuestSug(px){ const el=$('#'+px+'Sug'); if (el) el.innerHTML=guestSugHTML(px); }
+document.addEventListener('input', e=>{ const m=(e.target.id||'').match(/^(g|ag)(First|Last)$/); if (!m) return;
+  const px=m[1]; if (px==='ag') S.ag[m[2].toLowerCase()]=e.target.value;
+  const pk=S.gPick[px]; if (pk){ const g=guestPool().find(x=>x.id===pk); const f=$('#'+px+'First').value.trim(), l=$('#'+px+'Last').value.trim(); if (!g || key(f+' '+l)!==g.k) delete S.gPick[px]; }
+  drawGuestSug(px); });
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-gsug]'); if (!b) return;
+  const [px,id]=b.dataset.gsug.split('|'); const g=guestPool().find(x=>x.id===id); if (!g) return;
+  S.gPick[px]=id; $('#'+px+'First').value=g.first; $('#'+px+'Last').value=g.last;
+  if (px==='ag'){ S.ag.first=g.first; S.ag.last=g.last; } drawGuestSug(px); $('#'+px+'Add')?.focus(); });
 function drawPick(){
   const nr = nextRound(); $('#sheetTitle').textContent = nr ? `Check in · ${fmt(nr.date)} ${nr.course}` : 'Check in';
   const me = meId(), members = SEED.players.filter(p=>!p.guest && !p.inactive).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name)));
@@ -1766,9 +1819,11 @@ function drawPick(){
       <div><div class="small" style="font-weight:700;margin:4px 0">Your guests</div>
         ${mine.length?`<div class="list">${mine.map(g=>`<div class="li" style="grid-template-columns:auto 1fr auto;padding:6px 0"><span class="av sm g">${esc(initials(g.first+' '+g.last))}</span><span>${esc(g.first)} ${esc(g.last)}${gameChips('data-ggm', g.id, g)}</span><button class="xbtn" data-gout="${g.id}" aria-label="Remove ${esc(g.first)} ${esc(g.last)}">×</button></div>`).join('')}</div>`:'<div class="muted small">No guests added.</div>'}
         <div class="row" style="margin-top:6px;flex-wrap:nowrap"><input type="text" id="gFirst" placeholder="First name" aria-label="Guest first name" autocomplete="off" style="flex:1;min-width:0"><input type="text" id="gLast" placeholder="Last name" aria-label="Guest last name" autocomplete="off" style="flex:1;min-width:0"><button class="btn gold" id="gAdd" ${ready?'':'disabled'}>Add</button></div>
+        <div class="small muted" style="margin-top:4px">Start typing a name. If he has played with us before, tap his name when it pops up.</div>
+        <div class="gsug" id="gSug" aria-live="polite"></div>
         <div class="gline"><span class="small">New guest plays:</span><label class="small"><input type="checkbox" id="gSk" ${S.gNew?.skins===false?'':'checked'}> Skins</label><label class="small"><input type="checkbox" id="gCt" ${S.gNew?.ctp===false?'':'checked'}> CTP</label></div>
       </div>` : '<div class="muted small">Pick your name to check yourself in and add guests.</div>'}`;
-  if ($('#gFirst')){ $('#gFirst').value=keepF; $('#gLast').value=keepL; if (foc==='gFirst'||foc==='gLast') $('#'+foc).focus(); }
+  if ($('#gFirst')){ $('#gFirst').value=keepF; $('#gLast').value=keepL; if (foc==='gFirst'||foc==='gLast') $('#'+foc).focus(); drawGuestSug('g'); }
 }
 async function toggleCheckin(pid, on){
   const msg=live$('ciMsg'); const ref = S.db.doc(`checkins/${S.ciDate}/players/${pid}`);
@@ -1792,19 +1847,30 @@ async function removeGuest(id){
   try{ await S.db.doc(`checkins/${S.ciDate}/guests/${id}`).delete(); await clearPlayer(S.ciDate, id); }
   catch(err){ live$('ciMsg').textContent='Could not remove the guest.'; drawPick(); }
 }
-async function addGuest(){
-  const first=($('#gFirst').value||'').trim().replace(/\s+/g,' '), last=($('#gLast').value||'').trim().replace(/\s+/g,' '), host=meId(), msg=live$('ciMsg');
-  if (!first || !last){ msg.textContent='A guest needs a first and last name.'; return; }
-  if (first.length>30||last.length>30){ msg.textContent='Names must be 30 characters or less.'; return; }
-  const known = Object.values(S.guestBook||{}).find(g=>g.first.toLowerCase()===first.toLowerCase() && g.last.toLowerCase()===last.toLowerCase());
+async function addGuest(px='g'){
+  const admin = px==='ag', msg = live$(admin?'agMsg':'ciMsg'), ab = () => { const b=$('#'+px+'Add'); if (b) b.disabled=false; };
+  const first=($('#'+px+'First').value||'').trim().replace(/\s+/g,' '), last=($('#'+px+'Last').value||'').trim().replace(/\s+/g,' ');
+  const host = admin ? ($('#agHost')?.value||'') : meId();
+  if (!host){ msg.textContent = admin ? 'Pick the member this guest is playing with.' : 'Pick your name first.'; ab(); return; }
+  if (!first || !last){ msg.textContent='A guest needs a first and last name.'; ab(); return; }
+  if (first.length>30||last.length>30){ msg.textContent='Names must be 30 characters or less.'; ab(); return; }
+  const mem = memberMatch(first, last);
+  if (mem){ msg.textContent=`${shortName(mem.name)} is a member, not a guest. Check him in from the list instead.`; ab(); return; }
+  const pool = guestPool(), k = key(first+' '+last);
+  const known = pool.find(g=>g.id===S.gPick[px] && g.k===k) || pool.find(g=>g.k===k);
   const id = known ? known.id : 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  if ((S.guestsIn||{})[id]){ msg.textContent=`${first} ${last} is already checked in today.`; ab(); return; }
   try{
     if (!known) await S.db.doc('guests/'+id).set({id, first, last, host, at:new Date().toISOString()});
-    const gs=$('#gSk')?$('#gSk').checked:true, gc=$('#gCt')?$('#gCt').checked:true;
-    await S.db.doc(`checkins/${S.ciDate}/guests/${id}`).set({id, first, last, host, skins:gs, ctp:gc, ...(pastDeadline()?{late:true}:{}), at:new Date().toISOString(), by:S.meFull||''});
-    if ($('#gFirst')){ $('#gFirst').value=''; $('#gLast').value=''; } const ab=$('#gAdd'); if (ab) ab.disabled=false;
-    msg.textContent=`${first} ${last} is checked in as your guest.`;
-  }catch(err){ msg.textContent='Could not add the guest. Check your connection, or you may not have permission for this.'; const ab=$('#gAdd'); if (ab) ab.disabled=false; }
+    const gs = admin ? S.ag.skins!==false : ($('#gSk')?$('#gSk').checked:true), gc = admin ? S.ag.ctp!==false : ($('#gCt')?$('#gCt').checked:true);
+    const rec = {id, first, last, host, skins:gs, ctp:gc, ...(known&&known.seed?{seed:true}:{}), ...(pastDeadline()?{late:true}:{}), at:new Date().toISOString(), by:S.meFull||''};
+    await S.db.doc(`checkins/${S.ciDate}/guests/${id}`).set(rec);
+    delete S.gPick[px];
+    if (admin){ S.ag = {host:S.ag.host, skins:S.ag.skins, ctp:S.ag.ctp}; }
+    $('#'+px+'First').value=''; $('#'+px+'Last').value=''; drawGuestSug(px); ab();
+    const hn = PBY[host] ? shortName(PBY[host].name) : 'your';
+    msg.textContent = admin ? `${first} ${last} is checked in as ${hn}'s guest.` : `${first} ${last} is checked in as your guest.`;
+  }catch(err){ msg.textContent='Could not add the guest. Check your connection, or you may not have permission for this.'; ab(); }
 }
 document.addEventListener('click', async e=>{
   const c=e.target.closest('[data-gm],[data-ggm]');
@@ -1813,19 +1879,23 @@ document.addEventListener('click', async e=>{
       else { S.myGames = {...(S.myGames||{skins:true,ctp:true}), [g]:on}; drawPick(); } }
     else { const cur=(S.guestsIn||{})[id]; if (cur){ try{ await S.db.doc(`checkins/${S.ciDate}/guests/${id}`).set({...cur, [g]:on}); }catch(err){ live$('ciMsg').textContent='Could not update games.'; } } }
     return; }
-  const b=e.target.closest('#ciIn,#ciOut,#gAdd,button[data-gout]'); if (!b) return;
+  const b=e.target.closest('#ciIn,#ciOut,#gAdd,#agAdd,button[data-gout]'); if (!b) return;
   const me=meId();
   if (b.id==='ciIn'){ await toggleCheckin(me, true); }
   else if (b.id==='ciOut'){ if (await toggleCheckin(me, false)) live$('ciMsg').textContent = isRegular(me) ? 'Got it — you’re marked out this week. You’ll be back in automatically next week.' : 'You have been removed from this week’s check-in.'; }
-  else if (b.id==='gAdd'){ b.disabled=true; await addGuest(); }
+  else if (b.id==='gAdd'){ b.disabled=true; await addGuest('g'); }
+  else if (b.id==='agAdd'){ b.disabled=true; await addGuest('ag'); }
   else if (b.dataset.gout){ await removeGuest(b.dataset.gout); }
 });
 document.addEventListener('change', async e=>{ const t=e.target;
   if (t.id==='ciWho'){ if (t.value) setMe(t.value); else S.meId=null; drawPick(); }
   else if (t.id==='gSk'||t.id==='gCt'){ S.gNew={skins:$('#gSk').checked, ctp:$('#gCt').checked}; }
+  else if (t.id==='agHost'){ S.ag.host=t.value; }
+  else if (t.id==='agSk'||t.id==='agCt'){ S.ag.skins=$('#agSk').checked; S.ag.ctp=$('#agCt').checked; }
   else if (t.matches('input[type=checkbox][data-gout]') && !t.checked){ await removeGuest(t.dataset.gout); }
 });
-document.addEventListener('keydown', e=>{ if (e.key==='Enter' && (e.target.id==='gFirst'||e.target.id==='gLast')){ e.preventDefault(); $('#gAdd')?.click(); } });
+document.addEventListener('keydown', e=>{ if (e.key==='Enter' && (e.target.id==='gFirst'||e.target.id==='gLast')){ e.preventDefault(); $('#gAdd')?.click(); }
+  if (e.key==='Enter' && (e.target.id==='agFirst'||e.target.id==='agLast')){ e.preventDefault(); $('#agAdd')?.click(); } });
 
 computeCheckins();
 render();
