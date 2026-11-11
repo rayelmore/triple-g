@@ -513,7 +513,7 @@ V.home = () => {
     <div class="tiles">
       ${tile('#leaderboard','bars','Live Leaderboard','Real-time scores')}
       ${tile('#score','pen','Scorekeeper','Score your group')}
-      ${isAdmin()?tile('#coordinator','money','Game Coordinator','Payouts & winners'):tile('#members','people','Members','Directory')}
+      ${tile('#results','money','Payouts','Winners each round')}
       ${tile('#schedule','cal','Schedule','Upcoming Wednesdays')}
       ${tile('#standings','trophy','Standings','2026 season')}
       ${isAdmin() ? tile('#more','shield','Leadership','Requests, payouts & more') : tile('#access','shield','My Account','Password & sign out')}
@@ -535,6 +535,38 @@ V.members = () => {
     ${p.guest? '' : d && d['y'+yr] ? `<span class="pill good">${yr} paid</span>` : d ? `<span class="pill warn">${yr} due</span>` : '<span class="pill neutral">No dues record</span>'}</div>`; }).join('')}
   </div></div></main>`;
 };
+/* ---- Payouts for a round (same math as the Live Leaderboard) ---- */
+function payoutData(d, rows){
+  ensureLive(d); ensurePastCi(d);
+  const qrows = (rows || ROSTER().map(p=>{ const s=scoresFor(p), v=s[d]; if (v===undefined) return null; const q=quotaBefore(p,s,d); return {p,v,q,plus: typeof v==='number' && q!==null ? v-q : null}; }).filter(Boolean))
+    .filter(x=>typeof x.v==='number').map(x=>({pid:x.p.id, pts:x.v, plus:x.plus}));
+  const hasHoles = Object.values(S.live[d]||{}).some(x=>x.holes && Object.keys(x.holes).length);
+  const pars = courseInfo(schedFor(d)?.course).pars;
+  return { q: quotaGame(d, qrows), k: hasHoles ? skinsFor(d) : null, c: hasHoles ? ctpMoney(d, pars) : null, known: signupsKnown(d), hasHoles };
+}
+function payoutsHTML(d, rows){
+  const P = payoutData(d, rows), q=P.q, k=P.k, c=P.c;
+  const line = (a,b,amt) => `<div class="li" style="grid-template-columns:44px 1fr auto"><span class="small muted">${a}</span><span>${b}</span><b>${money2(amt)}</b></div>`;
+  const ctpWins = c ? c.C.filter(x=>x.list.length) : [];
+  return `<section class="card"><div class="pagehead"><h2 style="margin:0">Payouts</h2><button class="btn ghost" id="poCopy" style="padding:6px 12px">Copy for group chat</button></div>
+  <div class="small" id="poMsg" role="status"></div>
+  <h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money2(q.pot)}</span></h3>
+  <div class="list">${q.pays.length ? q.pays.map(x=>line(`${x.tie?'T':''}${x.place}`, `${esc(sname(x.pid))} <span class="small muted">${x.plus>=0?'+':''}${x.plus}</span>`, x.amt)).join('') : '<div class="muted small">No one with a quota scored this round.</div>'}</div>
+  ${k ? `<h3 style="margin:14px 0 2px">Skins <span class="small muted">· ${k.players} in · pot ${money2(k.pot)} · ${k.won} won</span></h3>
+  <div class="list">${k.winners.length ? k.winners.map(w=>line(`${w.n}×`, esc(sname(w.pid)), w.amt)).join('') : '<div class="muted small">No skins won — every low score was tied or over par.</div>'}</div>` : ''}
+  ${c ? `<h3 style="margin:14px 0 2px">Closest to the pin <span class="small muted">· ${c.players} in · pot ${money2(c.pot)}</span></h3>
+  <div class="list">${ctpWins.length ? ctpWins.map(x=>line(`#${x.h}`, `${esc(sname(x.list[0].pid))} <span class="small muted">${ftin(x.list[0])}</span>`, c.value)).join('') : '<div class="muted small">No closest-to-the-pin entries.</div>'}</div>` : ''}
+  ${!P.hasHoles ? '<div class="small muted" style="margin-top:10px">Skins and closest to the pin only show for rounds scored hole by hole in the app.</div>' : ''}
+  ${!P.known ? '<div class="small muted" style="margin-top:6px">No side-game sign-ups were recorded for this round, so everyone who played is counted in the pots.</div>' : ''}
+  </section>`;
+}
+function payoutText(d){
+  const r = allRounds().find(x=>x.date===d), P = payoutData(d), q=P.q, k=P.k, c=P.c;
+  let t = `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money2(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money2(x.amt)}`).join('\n') || 'No winners');
+  if (k) t += `\n\nSkins (pot ${money2(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money2(w.amt)}`).join('\n') || 'No skins won');
+  if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money2(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money2(c.value)}`).join('\n') || 'No entries'); }
+  return t;
+}
 V.results = () => {
   const rounds = allRounds(); const d = S.resDate || rounds[rounds.length-1].date; const r = rounds.find(x=>x.date===d);
   const rows = ROSTER().map(p=>{ const s=scoresFor(p), v=s[r.date]; if (v===undefined) return null; const q = quotaBefore(p,s,r.date); return {p,v,q,plus: typeof v==='number' && q!==null ? v-q : null}; }).filter(Boolean)
@@ -545,7 +577,7 @@ V.results = () => {
   ${rows.length ? rows.map((x,i)=>`<div class="li"><span class="medal">${typeof x.v==='number' && x.plus!==null && i<3 ? i+1 : ''}</span>
     <div><div class="name">${esc(shortName(x.p.name))}${x.p.guest?' <span class="pill neutral">Guest</span>':''}</div><div class="small muted">${x.v==='NS'?'No show':`${x.v} pts${x.q!==null?` · quota ${x.q}`:' · new player'}`}</div></div>
     ${x.v==='NS'?'<span class="pill bad">NS</span>':plusHtml(x.plus)}</div>`).join('') : '<div class="li"><span></span><span class="muted">No scores recorded for this date.</span><span></span></div>'}
-  </div></div></main>`;
+  </div></div>${payoutsHTML(r.date, rows)}</main>`;
 };
 V.standings = () => {
   const min = S.minR ?? 5;
@@ -718,9 +750,23 @@ const GAME_DEFAULT = {skins:10, ctp:5, ctpShare:2, qSplit:[60,30,10]};
 function games(){ return {...GAME_DEFAULT, ...(S.games||{})}; }
 
 /* ---- Skins (Scrolf settings: gross score, 1 winner per hole, skin must be par or better, even split across wins, no carryover) ---- */
+/* who was in each side game on a given date (current round: live check-ins; past rounds: saved check-ins) */
+S.pastCi = {};
+function ensurePastCi(d){
+  if (!S.db || !d || d===S.ciDate || S.pastCi[d]) return; const c = S.pastCi[d] = {players:null, guests:null};
+  S.db.collection(`checkins/${d}/players`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); c.players=m; render(); }, ()=>{ c.players={}; render(); });
+  S.db.collection(`checkins/${d}/guests`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id) m[v.id]=v; }); c.guests=m; render(); }, ()=>{ c.guests={}; render(); });
+}
+function signupsKnown(d){ if (d===S.ciDate) return true; const c=S.pastCi[d]; return !!(c && c.players && c.guests && (Object.keys(c.players).length || Object.keys(c.guests).length)); }
+function inGameOn(d, pid, g){
+  if (d===S.ciDate) return inGame(pid, g);
+  if (!signupsKnown(d)) return true;            // no sign-up records for that round: count everyone who played
+  const c=S.pastCi[d], v=c.players[pid] || c.guests[pid];
+  return v ? v.status!=='out' && v[g]!==false : true;   // no record = Wednesday regular, in both games by default
+}
 function skinsFor(d){
   const pars = courseInfo(schedFor(d)?.course).pars;
-  const L = S.live[d] || {}, players = Object.values(L).filter(x=>x.holes && Object.keys(x.holes).length && (d!==S.ciDate || inGame(x.pid,'skins')));
+  const L = S.live[d] || {}, players = Object.values(L).filter(x=>x.holes && Object.keys(x.holes).length && inGameOn(d, x.pid, 'skins'));
   const holes = [];
   for (let h=1; h<=18; h++){
     const sc = players.filter(x=>x.holes[h]>0).map(x=>({pid:x.pid, g:+x.holes[h]}));
@@ -741,13 +787,13 @@ const inches = e => (+e.ft||0)*12 + (+e.inch||0);
 const ftin = e => `${+e.ft||0}' ${+e.inch||0}"`;
 function ctpFor(d, pars){
   const L = S.live[d] || {};
-  const E = Object.values(S.ctp[d]||{}).filter(e=>(d!==S.ciDate || inGame(e.pid,'ctp')) && !(pars && L[e.pid]?.holes?.[e.hole] > pars[e.hole-1]));
+  const E = Object.values(S.ctp[d]||{}).filter(e=>inGameOn(d, e.pid, 'ctp') && !(pars && L[e.pid]?.holes?.[e.hole] > pars[e.hole-1]));
   const par3 = pars ? pars.map((p,i)=>p===3?i+1:0).filter(Boolean) : [...new Set(E.map(e=>e.hole))].sort((a,b)=>a-b);
   return par3.map(h=>({h, list:E.filter(e=>e.hole===h).sort((a,b)=>inches(a)-inches(b))}));
 }
 
 function ctpMoney(d, pars){
-  const C = ctpFor(d, pars), players = Object.values(S.live[d]||{}).filter(x=>x.holes && Object.keys(x.holes).length && (d!==S.ciDate || inGame(x.pid,'ctp'))).length;
+  const C = ctpFor(d, pars), players = Object.values(S.live[d]||{}).filter(x=>x.holes && Object.keys(x.holes).length && inGameOn(d, x.pid, 'ctp')).length;
   const pot = games().ctpShare * players, won = C.filter(c=>c.list.length).length, value = won ? pot/won : 0;
   return {C, pot, players, won, value, holes:C.length};
 }
@@ -761,7 +807,7 @@ function ensureLive(d){
 /* ---- Quota game ($3 of the $5): top 3 points over quota ---- */
 function quotaGame(d, rows){
   const G=games(), share=G.ctp-G.ctpShare, split=G.qSplit||[60,30,10];
-  const inG = rows.filter(r=>d!==S.ciDate || inGame(r.pid,'ctp'));
+  const inG = rows.filter(r=>inGameOn(d, r.pid, 'ctp'));
   const field = inG.filter(r=>r.plus!==null).sort((a,b)=>b.plus-a.plus);
   const pot = share*inG.length, pays=[]; let i=0;
   while (i<field.length && i<split.length){
@@ -1082,50 +1128,6 @@ document.addEventListener('input', e=>{ const t=e.target; if (!t.dataset.hs) ret
 });
 
 /* ---- Game Coordinator (payouts & winners) ---- */
-const SPLITS = {1:[100],2:[60,40],3:[60,30,10],4:[40,30,20,10],5:[35,25,20,12,8]};
-const autoPlaces = n => n<=6?2 : n<=12?3 : n<=20?4 : 5;
-function payoutCalc(d, buyin, places){
-  const R = SEED.players.map(p=>{ const s=scoresFor(p), v=s[d]; if (typeof v!=='number') return null; const q=quotaBefore(p,s,d); return {pid:p.id, v, q, plus:q===null?null:v-q}; }).filter(Boolean);
-  const field = R.filter(x=>x.plus!==null).sort((a,b)=>b.plus-a.plus);
-  const pot = buyin * R.length, split = SPLITS[places] || SPLITS[3];
-  const winners = []; let i=0;
-  while (i<field.length && i<split.length){
-    const tied = field.filter(x=>x.plus===field[i].plus);
-    const share = split.slice(i, i+tied.length).reduce((a,b)=>a+b,0);
-    const each = Math.round(pot*share/tied.length)/100;
-    tied.forEach(t=>winners.push({pid:t.pid, name:pname(t.pid), pts:t.v, plus:t.plus, place:i+1, tie:tied.length>1, amt:each}));
-    i += tied.length;
-  }
-  return {entrants:R.length, newPlayers:R.length-field.length, pot, winners, paid:winners.reduce((a,w)=>a+w.amt,0)};
-}
-V.coordinator = () => {
-  const rounds = allRounds(); if (!rounds.length) return '<main>No rounds yet.</main>';
-  const d = S.gcDate || rounds[rounds.length-1].date, r = rounds.find(x=>x.date===d) || rounds[rounds.length-1];
-  const saved = S.payouts[r.date];
-  const buyin = S.gcBuy ?? saved?.buyin ?? (games().ctp - games().ctpShare);
-  const n0 = payoutCalc(r.date, buyin, 3).entrants;
-  const places = S.gcPlaces ?? saved?.places ?? 3;
-  const c = payoutCalc(r.date, buyin, places);
-  return `<main>${back()}<div class="pagehead"><h1>Game Coordinator</h1></div>
-  <div class="muted">Quota game payouts: ${money$(games().ctp-games().ctpShare)} of each ${money$(games().ctp)} CTP + Quota buy-in, paid 60/30/10 to the most points over quota.</div>${dbNote()}
-  <select id="gcDate" aria-label="Choose a round">${[...rounds].reverse().map(x=>`<option value="${x.date}"${x.date===r.date?' selected':''}>${fmt(x.date,{month:'short',day:'numeric',year:'numeric'})} · ${esc(x.course)}${S.payouts[x.date]?' ✓':''}</option>`).join('')}</select>
-  <section class="card"><div class="row"><label for="gcBuy">Buy-in $</label><input type="number" id="gcBuy" min="0" max="100" value="${buyin}" class="sm">
-    <label for="gcPlaces">Places paid</label><select id="gcPlaces">${[1,2,3,4,5].map(n=>`<option${n===places?' selected':''}>${n}</option>`).join('')}</select></div>
-    <div class="small muted" style="margin-top:6px">Split: ${(SPLITS[places]).map(x=>x+'%').join(' / ')} · ties share the places they cover</div></section>
-  <div class="stat3"><div><b>${c.entrants}</b><span>players</span></div><div><b>${money$(c.pot)}</b><span>pot</span></div><div><b>${money$(c.pot-c.paid)}</b><span>left over</span></div></div>
-  <section class="card"><h2>Winners</h2><div class="list">
-  ${c.winners.length ? c.winners.map(w=>`<div class="li"><span class="medal">${w.tie?'T':''}${w.place}</span><div><div class="name">${esc(w.name)}</div><div class="small muted">${w.pts} pts · ${w.plus>=0?'+':''}${w.plus} vs quota</div></div><b>${money$(w.amt)}</b></div>`).join('') : '<div class="muted">No scored players with a quota for this round.</div>'}
-  </div>${c.newPlayers?`<div class="small muted" style="margin-top:8px">${c.newPlayers} new player${c.newPlayers>1?'s':''} without 3 rounds yet aren't ranked but are counted in the pot.</div>`:''}
-  ${c.pot-c.paid>0.01?`<div class="small muted" style="margin-top:4px">Left over: fewer than ${places} ranked players.</div>`:''}</section>
-  <div class="row"><button class="btn" id="gcSave" ${S.dbStatus==='ready'?'':'disabled'}>${saved?'Update payouts':'Save payouts'}</button><button class="btn ghost" id="gcCopy">Copy for group chat</button><span class="small" id="gcMsg" role="status"></span></div>
-  ${saved?`<div class="small muted">Saved ${fmt(saved.savedAt.slice(0,10))}${saved.by?` by ${esc(saved.by)}`:''}.</div>`:''}</main>`;
-};
-function gcText(){
-  const d=$('#gcDate').value, r=allRounds().find(x=>x.date===d), buy=+$('#gcBuy').value||0, pl=+$('#gcPlaces').value;
-  const c=payoutCalc(d,buy,pl);
-  return `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r.course}\nPot ${money$(c.pot)} (${c.entrants} players)\n` + c.winners.map(w=>`${w.tie?'T':''}${w.place}. ${w.name} ${w.plus>=0?'+':''}${w.plus} · ${money$(w.amt)}`).join('\n');
-}
-
 /* ---- Pairings ---- */
 function ptState(){
   const d = roundDate();
@@ -1255,7 +1257,7 @@ V.finalize = () => {
     : '<div class="li"><span></span><span class="muted">No live scores or check-ins for this date. Use Scorekeeper to enter scores by hand.</span><span></span></div>'}
   </div></section>
   <div class="row"><button class="btn gold" id="fzGo" ${S.dbStatus==='ready'&&ids.length?'':'disabled'}>${ex?.finalized?'Re-finalize round':'Finalize round'}</button><span class="small" id="fzMsg" role="status"></span></div>
-  ${ex?.finalized?`<div class="small muted">Finalized ${fmt(ex.finalizedAt.slice(0,10))}. <a href="#coordinator">Work out payouts →</a></div>`:''}
+  ${ex?.finalized?`<div class="small muted">Finalized ${fmt(ex.finalizedAt.slice(0,10))}. <a href="#results" data-resgo="${d}">See payouts →</a></div>`:''}
   <div class="small muted">NS marks a no-show. Quotas are the average of each player's last 3 rounds, so they update on their own once the round is final.</div></main>`;
 };
 
@@ -1265,7 +1267,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
   <div class="qa">
     <a class="big" href="#leaderboard">${ICON.bars}<b>Live Leaderboard</b><span>Real-time scores</span></a>
     <a href="#score">${ICON.edit}<b>Scorekeeper</b><span>Enter round scores</span></a>
-    ${isAdmin()?`<a class="goldb" href="#coordinator">${ICON.money}<b>Game Coordinator</b><span>Payouts &amp; winners</span></a>`:''}
+    <a class="goldb" href="#results">${ICON.money}<b>Results &amp; Payouts</b><span>Winners each round</span></a>
   </div>
   ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
   ${!isAdmin() ? '' : `<section class="card"><h2>Leadership Tools</h2><div class="lt">
@@ -1295,9 +1297,6 @@ V.access = () => `<main>${back()}<div class="pagehead"><h1>My Account</h1></div>
 /* ---- events for new tools ---- */
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.id==='lbGroup'){ S.lbGroup = t.value==='all'?'all':+t.value; render(); }
-  else if (t.id==='gcDate'){ S.gcDate=t.value; S.gcBuy=undefined; S.gcPlaces=undefined; render(); }
-  else if (t.id==='gcPlaces'){ S.gcPlaces=+t.value; render(); }
-  else if (t.id==='gcBuy'){ const v=+t.value; S.gcBuy = isFinite(v)&&v>=0 ? v : 0; render(); }
   else if (t.id==='ptInt'){ const v=+t.value; if (v>=5&&v<=20){ ptState().interval=v; S.pt.dirty=true; } render(); }
   else if (t.dataset.mv){ const st=ptState(), id=t.dataset.mv; st.groups.forEach(g=>{ const i=g.indexOf(id); if(i>=0) g.splice(i,1); }); st.groups[+t.value].push(id); st.groups=st.groups.filter(g=>g.length); st.dirty=true; render(); }
   else if (t.id==='ptAdd' && t.value){ const st=ptState(); if (!st.groups.length) st.groups.push([]); const small = st.groups.reduce((m,g,i)=>g.length<st.groups[m].length?i:m,0); st.groups[small].push(t.value); st.dirty=true; render(); }
@@ -1305,16 +1304,11 @@ document.addEventListener('change', e=>{ const t=e.target;
   else if (t.dataset.ns){ S.fzDraft[t.dataset.ns] = t.checked ? 'NS' : (S.live[S.fzDraft._d]?.[t.dataset.ns]?.pts ?? ''); render(); }
   else if (t.dataset.fz){ S.fzDraft[t.dataset.fz] = t.value; render(); }
 });
+document.addEventListener('click', e=>{ const a=e.target.closest('[data-resgo]'); if (a) S.resDate=a.dataset.resgo; });
 document.addEventListener('click', async e=>{
   const b = e.target.closest('button,[data-exf]'); if (!b) return;
   if (b.id==='lbSave'){ b.disabled=true; await saveLive(); b.disabled=false; }
-  else if (b.id==='gcCopy' || b.id==='pdCopy'){ const txt = b.id==='gcCopy'?gcText():pairText(); const m=live$(b.id==='gcCopy'?'gcMsg':'pdMsg'); try{ await navigator.clipboard.writeText(txt); m.textContent='Copied.'; }catch(err){ m.textContent='Copy not allowed here. Select and copy: '+txt; } }
-  else if (b.id==='gcSave'){
-    const d=$('#gcDate').value, buyin=+$('#gcBuy').value||0, places=+$('#gcPlaces').value, c=payoutCalc(d,buyin,places), m=live$('gcMsg');
-    b.disabled=true; m.textContent='Saving…';
-    try{ await S.db.doc('payouts/'+d).set({date:d, buyin, places, pot:c.pot, entrants:c.entrants, winners:c.winners, by:S.meFull||'', savedAt:new Date().toISOString()}); m.textContent='Payouts saved.'; }
-    catch(err){ m.textContent=noWrite; b.disabled=false; }
-  }
+  else if (b.id==='poCopy' || b.id==='pdCopy'){ const txt = b.id==='poCopy'?payoutText(S.resDate||allRounds().slice(-1)[0].date):pairText(); const m=live$(b.id==='poCopy'?'poMsg':'pdMsg'); try{ await navigator.clipboard.writeText(txt); m.textContent='Copied.'; }catch(err){ m.textContent='Copy not allowed here. Select and copy: '+txt; } }
   else if (b.dataset.gen){ const st=ptState(); const ids=Object.keys(S.checkins).filter(id=>PBY[id]); if (!ids.length){ live$('ptMsg').textContent='Nobody has checked in yet. Add players below.'; return; } st.groups=makeGroups(ids,b.dataset.gen); st.dirty=true; render(); }
   else if (b.dataset.rm){ const st=ptState(); st.groups=st.groups.map(g=>g.filter(x=>x!==b.dataset.rm)).filter(g=>g.length); st.dirty=true; render(); }
   else if (b.id==='ptNewGrp'){ const st=ptState(); if (!st.groups.length || st.groups[st.groups.length-1].length) st.groups.push([]); render(); }
@@ -1541,7 +1535,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['admin','admmembers','adminvite','admsched','admcheckin','expenses','coordinator','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -1673,7 +1667,7 @@ document.addEventListener('click', async e=>{
 });
 
 /* ---------- router ---------- */
-const TABS = {home:'home',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',coordinator:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
@@ -1928,7 +1922,6 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
     db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; }); render(); }, ()=>{});
-    db.collection('payouts').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.payouts=m; render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
