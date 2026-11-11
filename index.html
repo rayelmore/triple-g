@@ -462,7 +462,7 @@ function tile(href, icon, title, sub){ return `<a class="tile" href="${href}"><s
 const V = {};
 function homePairings(nr){
   if (!nr) return ''; const P = S.pairings[nr.date]; if (!P || P.status!=='published' || !P.groups.length) return '';
-  return `<section class="card"><div class="pagehead"><h2 style="margin:0">This Week's Pairings</h2><a href="#pairings" class="small">Details</a></div>
+  return `<section class="card"><div class="pagehead"><h2 style="margin:0">This Week's Pairings</h2>${isAdmin()?'<a href="#pairings" class="small">Manage</a>':''}</div>
   ${P.groups.map((g,i)=>`<div class="li" style="grid-template-columns:82px 1fr"><b>${teeAt(P.base||nr.time,i,P.interval||8)}</b><span>${g.map(id=>esc(pname(id))).join(', ')}</span></div>`).join('')}</section>`;
 }
 V.home = () => {
@@ -1295,6 +1295,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
   </div>
   ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
   ${!isAdmin() ? '' : `<section class="card"><h2>Leadership Tools</h2><div class="lt">
+    ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups',true)}
     ${ltRow('#admin','users','Admin','Members & schedule')}
     ${ltRow('#expenses','wallet','Expenditure Dashboard','Manage requests and approvals')}
     ${ltRow('#request','fileplus','Submit Request','New expenditure request')}
@@ -1407,6 +1408,7 @@ V.admin = () => `<main>${back()}<div class="pagehead"><h1>Admin</h1></div>
     ${ltRow('#admmembers','users','Members','Add, edit or deactivate members')}
     ${ltRow('#adminvite','users','Bulk Invite','Create logins for many members at once')}
     ${ltRow('#admcheckin','check','Check-in Manager','Check players in or out for this week')}
+    ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups')}
     ${ltRow('#admsched','check','Schedule','Add, change or cancel rounds')}
   </div></section></main>`;
 
