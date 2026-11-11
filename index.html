@@ -292,6 +292,19 @@ tr.tap{cursor:pointer}
 .gsug button{text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--gold-soft);color:var(--ink);font:inherit;font-size:15px;cursor:pointer}
 .gsug button span{display:block;font-size:13px;color:var(--muted)}
 .gsug .gpicked{font-size:14px;padding:4px 2px}
+.mt{width:100%;border-collapse:collapse;font-size:15px}
+.mt th{font-size:12px;color:var(--muted);font-weight:600;text-align:right;padding:4px 6px}
+.mt th:first-child,.mt td:first-child{text-align:left}
+.mt td{padding:9px 6px;border-top:1px solid var(--line);text-align:right;vertical-align:top}
+.mt td b{font-size:17px}
+.mt td small{display:block;font-size:12px;color:var(--muted)}
+.mt td.lead{background:var(--gold-soft)}
+.mt td.lead b::after{content:" ★";color:var(--gold);font-size:13px}
+.hg{display:grid;grid-template-columns:64px repeat(9,minmax(0,1fr));gap:2px;font-size:13px;text-align:center;margin-top:6px}
+.hg span{padding:4px 0;border-radius:6px}
+.hg .hn{color:var(--muted);font-size:12px}
+.hg .nm{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hg .best{background:var(--gold-soft);font-weight:800}
 </style>
 </head>
 <body class="gated">
@@ -867,15 +880,59 @@ V.leaderboard = () => {
   <div class="muted">${fmt(d,{weekday:'long',month:'short',day:'numeric'})} · ${esc(C.name||sch?.course||'')} · Stableford points against quota</div>${dbNote()}
   ${T.confirmed!==true?`<div class="banner">Birdie is set to ${T.birdie} points until leadership confirms it. <a href="#points">Check points</a></div>`:''}
   <a class="btn" href="#score" style="justify-self:start">Score my group</a>
-  <div class="tablewrap"><table class="compact lb"><thead><tr><th>#</th><th>Player</th><th class="num">Thru</th><th class="num" title="Gross score to par">Par</th><th class="num">Pts</th><th class="num">Q</th><th class="num">+/−</th></tr></thead><tbody>
+  <div class="seg" role="group" aria-label="Show"><button data-lbm="all" aria-pressed="${S.lbMode!=='match'}">Everyone</button><button data-lbm="match" aria-pressed="${S.lbMode==='match'}">My match${matchIds(d).length?` (${matchIds(d).length})`:''}</button></div>
+  ${S.lbMode==='match' ? matchHTML(d, L, pars, rows) : ''}${S.lbMode==='match' ? '' : `<div class="tablewrap"><table class="compact lb"><thead><tr><th>#</th><th>Player</th><th class="num">Thru</th><th class="num" title="Gross score to par">Par</th><th class="num">Pts</th><th class="num">Q</th><th class="num">+/−</th></tr></thead><tbody>
   ${rows.length ? rows.map(r=>`<tr class="${pars&&r.holes?'tap':''}" data-open="${r.pid}"><td>${r.rank}</td><td>${esc(sname(r.pid))}</td><td class="num">${r.final?'<b class="fin" title="Validated and saved">F✓</b>':r.thru>=18?'F':esc(r.thru??'—')}${!r.final&&r.v9?'<small class="v9">F9✓</small>':''}</td><td class="num topar ${r.toPar<0?'u':r.toPar>0?'o':''}">${r.holes&&pars?parStr(r.toPar):'—'}${r.holes&&pars&&r.thru?`<small>${r.gross}</small>`:''}</td><td class="num">${r.pts}</td><td class="num">${r.q??'New'}</td><td class="num">${plusHtml(r.plus)}</td></tr>${open===r.pid?card(r.pid):''}`).join('')
     : `<tr><td colspan="7" class="muted" style="white-space:normal">No scores yet. Each group's scorer taps "Score my group".</td></tr>`}
   </tbody></table></div>
   ${quotaTable(d, rows)}
   ${skinsTable(d)}
   ${contestsTable(d, pars)}
-  ${isAdmin() && (Object.keys(L).length||Object.keys(S.ctp[d]||{}).length)?`<section class="card"><h2>Start Over</h2><div class="small muted" style="margin-bottom:10px">Deletes every live score and closest-to-the-pin entry for ${fmt(d,{month:'short',day:'numeric'})}. Check-ins stay. Use this to clear test scores before a round.</div><button class="btn ghost danger" id="resetRound" ${S.dbStatus==='ready'?'':'disabled'}>Clear all scores for this round</button><span class="small" id="rsMsg" role="status"></span></section>`:''}</main>`;
+  `}${S.lbMode!=='match' && isAdmin() && (Object.keys(L).length||Object.keys(S.ctp[d]||{}).length)?`<section class="card"><h2>Start Over</h2><div class="small muted" style="margin-bottom:10px">Deletes every live score and closest-to-the-pin entry for ${fmt(d,{month:'short',day:'numeric'})}. Check-ins stay. Use this to clear test scores before a round.</div><button class="btn ghost danger" id="resetRound" ${S.dbStatus==='ready'?'':'disabled'}>Clear all scores for this round</button><span class="small" id="rsMsg" role="status"></span></section>`:''}</main>`;
 };
+
+/* ---- My match: private head-to-head (front / back / overall), saved only on this phone for this round ---- */
+const MKEY = d => '3g-match-'+d;
+function matchIds(d){ try{ const v=JSON.parse(localStorage.getItem(MKEY(d))||'[]'); return Array.isArray(v)?v.filter(id=>PBY[id]):[]; }catch(e){ return S['mt'+d]||[]; } }
+function saveMatch(d, ids){ S['mt'+d]=ids; try{ localStorage.setItem(MKEY(d), JSON.stringify(ids)); }catch(e){} }
+function matchPool(d, L){ const s=new Set(d===S.ciDate ? playingIds() : []); Object.keys(L||{}).forEach(id=>s.add(id)); return [...s].filter(id=>PBY[id]); }
+function nineTot(holes, pars, hs){ let st=0, tp=0, n=0; hs.forEach(h=>{ const g=+(holes||{})[h]; if (g>0 && pars){ st+=g; tp+=g-pars[h-1]; n++; } }); return {st, tp, n}; }
+function matchHTML(d, L, pars, rows){
+  const me=meId(), pool=matchPool(d, L);
+  const saved=matchIds(d), picking = S.mPickOpen || !saved.length;
+  if (picking){
+    const sel=new Set(S.mPick || saved), others=[...sel].filter(id=>id!==me);
+    const list=pool.filter(id=>id!==me).sort((a,b)=>sname(a).localeCompare(sname(b)));
+    return `<section class="card"><h2 style="margin:0 0 4px">Set up your match</h2>
+    <div class="small muted">Pick up to 4 players you have a side bet with. ${me&&pool.includes(me)?'You are included automatically. ':''}Only you see this, on this phone, for today's round.</div>
+    <div class="pick2" style="margin-top:8px">${list.length ? list.map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-mpk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&others.length>=4?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(shortName(PBY[id].name))}</span></label>`).join('') : '<div class="muted small">Nobody is checked in or scoring yet.</div>'}</div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="mGo" ${others.length?'':'disabled'}>Show my match</button>${saved.length?'<button class="btn ghost" id="mCancel">Cancel</button>':''}</div></section>`;
+  }
+  const ids=[...new Set([...(me&&pool.includes(me)?[me]:[]), ...saved])];
+  const data=ids.map(id=>{ const H=L[id]?.holes||{}; return {id, H, f:nineTot(H,pars,NINE.front), b:nineTot(H,pars,NINE.back), t:nineTot(H,pars,[...NINE.front,...NINE.back])}; });
+  const leadSet = k => { const c=data.filter(x=>x[k].n>0); if (c.length<2) return new Set(); const lo=Math.min(...c.map(x=>x[k].tp)); return new Set(c.filter(x=>x[k].tp===lo).map(x=>x.id)); };
+  const LF=leadSet('f'), LB=leadSet('b'), LT=leadSet('t');
+  const cell = (x,k,ls) => { const v=x[k], full=k==='t'?18:9; if (!v.n) return '<td><span class="muted">—</span></td>';
+    return `<td class="${ls.has(x.id)?'lead':''}"><b>${v.st}</b><small>${parStr(v.tp)}${v.n<full?` · thru ${v.n}`:''}</small></td>`; };
+  const order=[...data].sort((a,b)=>(a.t.n?a.t.tp:999)-(b.t.n?b.t.tp:999));
+  const grid = hs => { const best={}; hs.forEach(h=>{ const g=data.map(x=>+x.H[h]).filter(v=>v>0); if (g.length>1){ const lo=Math.min(...g); if (g.filter(v=>v===lo).length===1) best[h]=lo; } });
+    return `<div class="hg"><span></span>${hs.map(h=>`<span class="hn">${h}</span>`).join('')}${order.map(x=>`<span class="nm">${esc(sname(x.id))}</span>${hs.map(h=>{ const g=+x.H[h]; return `<span class="${g>0&&best[h]===g?'best':''}">${g>0?g:'·'}</span>`; }).join('')}`).join('')}</div>`; };
+  return `<section class="card"><div class="pagehead"><h2 style="margin:0">My match</h2><button class="btn ghost" id="mEdit" style="padding:6px 12px">Change players</button></div>
+  <div class="small muted">Lowest score wins each part. ★ marks who's ahead, compared to par so it's fair mid-round.</div>
+  <table class="mt" style="margin-top:6px"><thead><tr><th>Player</th><th>Front</th><th>Back</th><th>Overall</th></tr></thead><tbody>
+  ${order.map(x=>`<tr><td>${esc(sname(x.id))}${x.id===me?' <span class="small muted">(you)</span>':''}</td>${cell(x,'f',LF)}${cell(x,'b',LB)}${cell(x,'t',LT)}</tr>`).join('')}</tbody></table>
+  ${pars ? `<h3 style="margin:14px 0 0;font-size:15px">Front 9</h3>${grid(NINE.front)}<h3 style="margin:12px 0 0;font-size:15px">Back 9</h3>${grid(NINE.back)}<div class="small muted" style="margin-top:6px">Highlighted = lowest score on the hole.</div>` : '<div class="small muted">Hole-by-hole scores show once the course pars are set.</div>'}
+  <div class="small muted" style="margin-top:10px">Private to you. Clears after today's round.</div></section>`;
+}
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-lbm],#mGo,#mCancel,#mEdit'); if (!b) return; const d=roundDate();
+  if (b.dataset.lbm){ S.lbMode=b.dataset.lbm; S.mPickOpen=false; S.mPick=null; }
+  else if (b.id==='mGo'){ saveMatch(d, [...(S.mPick||matchIds(d))].filter(id=>id!==meId()).slice(0,4)); S.mPickOpen=false; S.mPick=null; }
+  else if (b.id==='mCancel'){ S.mPickOpen=false; S.mPick=null; }
+  else if (b.id==='mEdit'){ S.mPickOpen=true; S.mPick=matchIds(d); }
+  render(); });
+document.addEventListener('change', e=>{ const t=e.target; if (!t.dataset || !t.dataset.mpk) return; const d=roundDate();
+  const s=new Set(S.mPick||matchIds(d)); s.delete(meId()); if (t.checked){ if (s.size>=4){ t.checked=false; return; } s.add(t.dataset.mpk); } else s.delete(t.dataset.mpk);
+  S.mPick=[...s]; render(); });
 
 /* ---- Score my group (pick players at the course, then score hole by hole) ---- */
 const GKEY = d => '3g-group-'+d;
