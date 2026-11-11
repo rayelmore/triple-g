@@ -1144,6 +1144,7 @@ document.addEventListener('input', e=>{ const t=e.target; if (!t.dataset.hs) ret
 
 /* ---- Game Coordinator (payouts & winners) ---- */
 /* ---- Pairings ---- */
+const playingIds = () => [...Object.keys(S.checkins||{}), ...Object.keys(S.guestsIn||{})];
 function ptState(){
   const d = roundDate();
   const P0=S.pairings[d]; if (!S.pt || S.pt.date!==d || (!S.pt.dirty && P0 && P0.savedAt!==S.pt.from)){ const P=P0; S.pt = {date:d, groups: P ? P.groups.map(g=>[...g]) : [], interval: P?.interval || 8, dirty:false, from:P?.savedAt}; }
@@ -1161,11 +1162,11 @@ function makeGroups(ids, mode){
 V.pairtool = () => {
   const st = ptState(), d = st.date, sch = schedFor(d), P = S.pairings[d];
   const placed = new Set(st.groups.flat());
-  const waiting = Object.keys(S.checkins).filter(id=>PBY[id] && !placed.has(id));
+  const waiting = playingIds().filter(id=>PBY[id] && !placed.has(id));
   const others = SEED.players.filter(p=>!placed.has(p.id)).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name)));
   return `<main>${back()}<div class="pagehead"><h1>Pairing Tool</h1>${st.dirty?'<span class="pill warn">Unsaved</span>':P?`<span class="pill ${P.status==='published'?'good':'neutral'}">${P.status==='published'?'Published':'Draft'}</span>`:''}</div>
   <div class="muted">${fmt(d,{weekday:'long',month:'short',day:'numeric'})}${sch?` · ${esc(sch.course)} · first tee ${fmtTee(sch.time)} · ${sch.teeTimes??'?'} tee times booked`:''}</div>${dbNote()}
-  <section class="card"><div class="small muted">${Object.keys(S.checkins).length} checked in${waiting.length?` · ${waiting.length} not in a group yet`:''}</div>
+  <section class="card"><div class="small muted">${playingIds().length} checked in${waiting.length?` · ${waiting.length} not in a group yet`:''}</div>
     <div class="row" style="margin-top:10px"><button class="btn" data-gen="balanced">Balanced by quota</button><button class="btn ghost" data-gen="random">Random</button></div>
     <div class="small muted" style="margin-top:8px">Both use everyone checked in and make even groups of 3–4. Balanced spreads high and low quotas across groups.</div>
     <div class="row" style="margin-top:10px"><label for="ptInt" class="small">Minutes between tee times</label><input type="number" id="ptInt" class="sm" min="5" max="20" value="${st.interval}"></div></section>
@@ -1183,11 +1184,11 @@ V.pairtool = () => {
 V.pairings = () => {
   const d = roundDate(), sch = schedFor(d), P = S.pairings[d];
   const placed = new Set(P ? P.groups.flat() : []);
-  const waiting = Object.keys(S.checkins).filter(id=>PBY[id] && !placed.has(id));
+  const waiting = playingIds().filter(id=>PBY[id] && !placed.has(id));
   const past = Object.values(S.pairings).filter(x=>x.date<d).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4);
   return `<main>${back()}<div class="pagehead"><h1>Golf Pairing Dashboard</h1></div>
   <div class="muted">Wednesday pairing management</div>${dbNote()}
-  <div class="stat3"><div><b>${Object.keys(S.checkins).length}</b><span>checked in</span></div><div><b>${P?P.groups.length:0}</b><span>groups</span></div><div><b>${sch?.teeTimes??'?'}</b><span>tee times booked</span></div></div>
+  <div class="stat3"><div><b>${playingIds().length}</b><span>checked in</span></div><div><b>${P?P.groups.length:0}</b><span>groups</span></div><div><b>${sch?.teeTimes??'?'}</b><span>tee times booked</span></div></div>
   ${sch && P && P.groups.length>(sch.teeTimes||99)?`<div class="banner">There are ${P.groups.length} groups but only ${sch.teeTimes} tee times booked. Call the course for more times.</div>`:''}
   ${waiting.length?`<div class="banner">${waiting.length} checked-in player${waiting.length>1?'s are':' is'} not in a group: ${waiting.map(id=>esc(pname(id))).join(', ')}.</div>`:''}
   ${(()=>{ const gone = P && d===S.ciDate ? P.groups.flat().filter(id=>!S.checkins[id] && !(S.guestsIn||{})[id]) : []; return gone.length?`<div class="banner">${gone.map(id=>esc(pname(id))).join(', ')} ${gone.length>1?'are':'is'} in a group but no longer checked in. Edit the pairings to fill the spot.</div>`:''; })()}
@@ -1334,7 +1335,7 @@ document.addEventListener('click', async e=>{
   const b = e.target.closest('button,[data-exf]'); if (!b) return;
   if (b.id==='lbSave'){ b.disabled=true; await saveLive(); b.disabled=false; }
   else if (b.id==='poCopy' || b.id==='pdCopy'){ const txt = b.id==='poCopy'?payoutText(S.resDate||allRounds().slice(-1)[0].date):pairText(); const m=live$(b.id==='poCopy'?'poMsg':'pdMsg'); try{ await navigator.clipboard.writeText(txt); m.textContent='Copied.'; }catch(err){ m.textContent='Copy not allowed here. Select and copy: '+txt; } }
-  else if (b.dataset.gen){ const st=ptState(); const ids=Object.keys(S.checkins).filter(id=>PBY[id]); if (!ids.length){ live$('ptMsg').textContent='Nobody has checked in yet. Add players below.'; return; } st.groups=makeGroups(ids,b.dataset.gen); st.dirty=true; render(); }
+  else if (b.dataset.gen){ const st=ptState(); const ids=playingIds().filter(id=>PBY[id]); if (!ids.length){ live$('ptMsg').textContent='Nobody has checked in yet. Add players below.'; return; } st.groups=makeGroups(ids,b.dataset.gen); st.dirty=true; render(); }
   else if (b.dataset.rm){ const st=ptState(); st.groups=st.groups.map(g=>g.filter(x=>x!==b.dataset.rm)).filter(g=>g.length); st.dirty=true; render(); }
   else if (b.id==='ptNewGrp'){ const st=ptState(); if (!st.groups.length || st.groups[st.groups.length-1].length) st.groups.push([]); render(); }
   else if (b.dataset.ptsave){
