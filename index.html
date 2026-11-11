@@ -879,6 +879,20 @@ V.leaderboard = () => {
 
 /* ---- Score my group (pick players at the course, then score hole by hole) ---- */
 const GKEY = d => '3g-group-'+d;
+/* published pairings → one-tap scoring group */
+function pairGroupsHTML(d, inRound){
+  const P=S.pairings[d]; if (!P || P.status!=='published' || !P.groups.length) return '';
+  const me=meId(), sch=schedFor(d);
+  const order=P.groups.map((g,i)=>({g,i})).sort((a,b)=>(b.g.includes(me))-(a.g.includes(me)));
+  return `<section class="card" style="padding:12px 14px"><h2 style="margin:0 0 4px">Score a pairing group</h2><div class="small muted">Tap your group to start scoring it.</div>
+  <div class="gsug">${order.map(({g,i})=>{ const ids=g.filter(id=>inRound.has(id)&&PBY[id]); if (!ids.length) return '';
+    return `<button type="button" data-pgrp="${i}">${g.includes(me)?'<b>Your group</b> · ':''}Group ${i+1} · ${teeAt(P.base||sch?.time,i,P.interval||8)}<span>${ids.map(id=>esc(sname(id))).join(', ')}${ids.length<g.length?' · '+(g.length-ids.length)+' not checked in':''}</span></button>`; }).join('')}</div>
+  <div class="small muted" style="margin-top:8px">Or pick players yourself below.</div></section>`;
+}
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-pgrp]'); if (!b) return;
+  const d=roundDate(), P=S.pairings[d]; if (!P) return; const inR=new Set([...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})]);
+  const ids=(P.groups[+b.dataset.pgrp]||[]).filter(id=>inR.has(id)&&PBY[id]).slice(0,5); if (!ids.length) return;
+  setGroup(d, ids); S.pickOpen=false; S.pick=null; S.pq=''; S.draft=null; render(); scrollTo(0,0); });
 function myGroup(d){ if (S.myGroup && S.myGroup.d===d) return S.myGroup.ids; try{ const v=JSON.parse(localStorage.getItem(GKEY(d))||'null'); if (Array.isArray(v)){ S.myGroup={d,ids:v}; return v; } }catch(e){} return null; }
 function setGroup(d, ids){ S.myGroup={d,ids}; try{ localStorage.setItem(GKEY(d), JSON.stringify(ids)); }catch(e){} }
 /* ---- 9 / 18 hole score validation ---- */
@@ -909,6 +923,7 @@ V.score = () => {
     return `<main>${back()}${head}<h1 style="margin:0;font:800 24px var(--display)">Select up to five players to score for</h1>
     <div class="muted small">${fmt(d,{weekday:'long',month:'short',day:'numeric'})} · ${inRound.size} checked in · ${sel.size} selected</div>${dbNote()}
     ${S.dbStatus==='ready' && !inRound.size ? `<div class="banner">Nobody is checked in for this round yet. Players (and their guests) must check in on the home screen before they can be scored.</div>` : '<div class="small muted">Only players and guests checked in for this round appear here.</div>'}
+    ${pairGroupsHTML(d, inRound)}
     <input type="search" id="pq" value="${esc(S.pq||'')}" placeholder="Find a player" aria-label="Find a player">
     <div class="row"><button class="btn" id="pickGo" ${sel.size?'':'disabled'}>Start scoring</button>${ids?'<button class="btn ghost" id="pickCancel">Cancel</button>':''}</div>
     <div class="card" style="padding:0 14px"><div class="pick2">${R.map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-pk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&sel.size>=5?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(shortName(PBY[id].name))}</span></label>`).join('')}</div></div></main>`;
@@ -1175,12 +1190,21 @@ V.pairings = () => {
   <div class="stat3"><div><b>${Object.keys(S.checkins).length}</b><span>checked in</span></div><div><b>${P?P.groups.length:0}</b><span>groups</span></div><div><b>${sch?.teeTimes??'?'}</b><span>tee times booked</span></div></div>
   ${sch && P && P.groups.length>(sch.teeTimes||99)?`<div class="banner">There are ${P.groups.length} groups but only ${sch.teeTimes} tee times booked. Call the course for more times.</div>`:''}
   ${waiting.length?`<div class="banner">${waiting.length} checked-in player${waiting.length>1?'s are':' is'} not in a group: ${waiting.map(id=>esc(pname(id))).join(', ')}.</div>`:''}
+  ${(()=>{ const gone = P && d===S.ciDate ? P.groups.flat().filter(id=>!S.checkins[id] && !(S.guestsIn||{})[id]) : []; return gone.length?`<div class="banner">${gone.map(id=>esc(pname(id))).join(', ')} ${gone.length>1?'are':'is'} in a group but no longer checked in. Edit the pairings to fill the spot.</div>`:''; })()}
   <section class="card"><div class="pagehead"><h2 style="margin:0">${fmt(d,{weekday:'short',month:'short',day:'numeric'})}${sch?` · ${esc(sch.course)}`:''}</h2>${P?`<span class="pill ${P.status==='published'?'good':'neutral'}">${P.status==='published'?'Published':'Draft'}</span>`:'<span class="pill warn">Not built</span>'}</div>
   ${P ? P.groups.map((g,i)=>`<div class="li" style="grid-template-columns:90px 1fr"><b>${teeAt(P.base||sch?.time,i,P.interval||8)}</b><span>${g.map(id=>esc(pname(id))).join(', ')}</span></div>`).join('') : '<div class="muted" style="margin-top:8px">No pairings yet for this round.</div>'}
   </section>
-  <div class="row"><a class="btn" href="#pairtool">${P?'Edit pairings':'Build pairings'}</a>${P?'<button class="btn ghost" id="pdCopy">Copy for group chat</button>':''}<span class="small" id="pdMsg" role="status"></span></div>
+  <div class="row"><a class="btn" href="#pairtool">${P?'Edit pairings':'Build pairings'}</a>${P?'<button class="btn ghost" id="pdCopy">Copy for group chat</button>':''}${P?pairMailBtn(d,P):''}<span class="small" id="pdMsg" role="status"></span></div>
+  ${P?(()=>{ const miss=P.groups.flat().filter(id=>PBY[id] && !PBY[id].guest && !(PBY[id].email||'').trim()); return miss.length?`<div class="small muted">No email on file for ${miss.map(id=>esc(pname(id))).join(', ')}. Add it under Admin → Members, or send them the group-chat copy.</div>`:''; })():''}
   ${past.length?`<section class="card"><h2>Recent Pairings</h2>${past.map(x=>`<div class="li" style="grid-template-columns:1fr auto"><span>${fmt(x.date,{month:'short',day:'numeric'})} · ${esc(schedFor(x.date)?.course||'')}</span><span class="muted small">${x.groups.length} groups · ${x.groups.flat().length} players</span></div>`).join('')}</section>`:''}</main>`;
 };
+function pairMailBtn(d, P){
+  const em=[...new Set(P.groups.flat().map(id=>(PBY[id]?.email||'').trim()).filter(Boolean))];
+  const sch=schedFor(d), subj=`3G pairings · ${fmt(d,{weekday:'short',month:'short',day:'numeric'})}${sch?` · ${sch.course}`:''}`;
+  const body=pairText()+'\n\nScoring: each group picks one person to score in the app and one to keep a paper card. Compare at 9 and 18.';
+  const href=`mailto:?bcc=${encodeURIComponent(em.join(','))}&subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  return `<a class="btn ghost" href="${esc(href)}">Email pairings${em.length?` (${em.length})`:''}</a>`;
+}
 function pairText(){
   const d=roundDate(), sch=schedFor(d), P=S.pairings[d];
   return `3G pairings · ${fmt(d,{weekday:'short',month:'short',day:'numeric'})}${sch?` · ${sch.course}`:''}\n` + P.groups.map((g,i)=>`${teeAt(P.base||sch?.time,i,P.interval||8)}  ${g.map(pname).join(', ')}`).join('\n');
