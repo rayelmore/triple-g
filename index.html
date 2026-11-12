@@ -820,7 +820,8 @@ function ensureLive(d){
 /* ---- Quota game ($3 of the $5): top 3 points over quota ---- */
 function quotaGame(d, rows){
   const G=games(), share=G.ctp-G.ctpShare, split=G.qSplit||[60,30,10];
-  const inG = rows.filter(r=>inGameOn(d, r.pid, 'ctp'));
+  const inAll = rows.filter(r=>inGameOn(d, r.pid, 'ctp'));
+  const inG = inAll.filter(r=>quotaOn(r.pid, d)!==null);          // no quota = closest to the pin only, not in the quota pot
   const field = inG.filter(r=>r.plus!==null).sort((a,b)=>b.plus-a.plus);
   const pot = share*inG.length, pays=[]; let i=0;
   while (i<field.length && i<split.length){
@@ -828,7 +829,7 @@ function quotaGame(d, rows){
     tied.forEach(x=>pays.push({pid:x.pid, place:i+1, tie:tied.length>1, pct:Math.round(pct/tied.length*10)/10, plus:x.plus, pts:x.pts, amt:pot*pct/100/tied.length}));
     i+=tied.length;
   }
-  return {pot, share, split, n:inG.length, pays, unranked: inG.length-field.length};
+  return {pot, share, split, n:inG.length, pays, unranked: inG.length-field.length, ctpOnly: inAll.length-inG.length};
 }
 function quotaTable(d, rows){
   const q=quotaGame(d, rows);
@@ -837,7 +838,7 @@ function quotaTable(d, rows){
   ${q.pays.length ? q.pays.map(p=>`<tr><td>${p.tie?'T':''}${p.place} <span class="muted small">(${p.pct}%${p.tie?' each':''})</span></td><td><b>${esc(sname(p.pid))}</b></td><td class="num">${plusHtml(p.plus)}</td><td class="num">${money2(p.amt)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="muted">No scores yet.</td></tr>'}
   </tbody></table></div>
-  <div class="small muted" style="margin-top:6px">${money$(q.share)} of each ${money$(games().ctp)} goes here, paid ${q.split.join(' / ')}% to the top 3 over quota. Ties share their places.${q.unranked?` ${q.unranked} new player${q.unranked>1?'s':''} without a quota yet count in the pot but aren't ranked.`:''}</div></section>`;
+  <div class="small muted" style="margin-top:6px">${money$(q.share)} of each ${money$(games().ctp)} goes here, paid ${q.split.join(' / ')}% to the top 3 over quota. Ties share their places.${q.ctpOnly?` ${q.ctpOnly} player${q.ctpOnly>1?'s':''} without a quota ${q.ctpOnly>1?'are':'is'} in closest to the pin only (${money$(games().ctpShare)}) and not in this pot.`:''}</div></section>`;
 }
 function skinsTable(d){
   const k = skinsFor(d);
@@ -870,8 +871,8 @@ V.leaderboard = () => {
   const C = courseInfo(sch?.course), pars = C.pars;
   const inR = id => d!==S.ciDate || !!((S.checkins||{})[id] || (S.guestsIn||{})[id]);
   const rows = Object.values(L).filter(x=>inR(x.pid)).map(x=>{ const r=liveRow(x,pars), q=quotaOn(x.pid,d); return {...r, q, plus: q===null?null:r.pts-q}; })
-    .sort((a,b)=> (b.plus??-999)-(a.plus??-999) || b.pts-a.pts);
-  let rank=0, prev=null; rows.forEach((r,i)=>{ if (r.plus!==prev){ rank=i+1; prev=r.plus; } r.rank = r.plus===null?'':rank; });
+    .sort((a,b)=> (a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.plus??-999)-(a.plus??-999));
+  let rank=0, prev=null; rows.forEach((r,i)=>{ const k=r.thru?r.toPar:null; if (k!==prev){ rank=i+1; prev=k; } r.rank = k===null?'':rank; });
   const open = S.lbOpen, T = ptTable();
   const card = id => { const x=L[id]; if (!x?.holes || !pars) return '';
     return `<tr><td colspan="7" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=x.holes[i+1]; return `<span><i>${i+1}</i><b class="${g? scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div>
@@ -1825,7 +1826,7 @@ const isRegular = id => !!(PBY[id] && PBY[id].auto && !PBY[id].inactive);
 /* ---------- check-in (self, guests, everyone) ---------- */
 // Side games chosen at check-in. Older check-ins without a choice count as playing both.
 function inGame(pid, g){ const c = (S.checkins||{})[pid] || (S.guestsIn||{})[pid]; if (!c) return false; return c[g] !== false; }
-function gameChips(attr, id, c){ return `<span class="gchips">${[['skins',`Skins $${games().skins}`],['ctp',`CTP + Quota $${games().ctp}`]].map(([g,l])=>`<button type="button" class="gchip" ${attr}="${id}|${g}" aria-pressed="${c? c[g]!==false : true}">${l}</button>`).join('')}</span>`; }
+function gameChips(attr, id, c){ return `<span class="gchips">${[['skins',`Skins $${games().skins}`],['ctp', quotaOn(id, S.ciDate)===null ? `CTP $${games().ctpShare}` : `CTP + Quota $${games().ctp}`]].map(([g,l])=>`<button type="button" class="gchip" ${attr}="${id}|${g}" aria-pressed="${c? c[g]!==false : true}">${l}</button>`).join('')}</span>`; }
 function registerGuest(g){
   if (!g || !g.id) return;
   const name = `${g.first} ${g.last}`.trim();
