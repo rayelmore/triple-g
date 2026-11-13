@@ -137,7 +137,7 @@ const unpack = (col, data) => {
   if (col==='cb_golf' && Array.isArray(data.groups)) return {...data, groups: data.groups.map(g=>Array.isArray(g)?g:(g.p||[]))};
   return data;
 };
-const S = { posts:[], comments:[], dates:[], golf:[], people:[], pay:{}, info:null, paysum:null, config:null, photos:[], me:null, route:'home', open:{} };
+const S = { posts:[], comments:[], dates:[], golf:[], people:[], pay:{}, info:null, paysum:null, config:null, photos:[], me:null, route:'home', open:{}, scores:[], ctp:[], hcp:{}, courses:{}, games:null };
 let DB;
 async function initDemo(){
   const mem = {}; const subs = {};
@@ -216,7 +216,11 @@ function start(){
   DB.sub('cb_golf', v=>{ S.golf=v; render(); });
   DB.sub('cb_people', v=>{ S.people=v; render(); });
   DB.sub('cb_photos', v=>{ S.photos=v; render(); });
-  DB.sub('cb_meta', v=>{ S.info=v.find(x=>x.id==='info'); S.paysum=v.find(x=>x.id==='paysum'); S.config=v.find(x=>x.id==='config'); render(); });
+  DB.sub('cb_scores', v=>{ S.scores=v; render(); });
+  DB.sub('cb_ctp', v=>{ S.ctp=v; render(); });
+  DB.sub('cb_hcp', v=>{ S.hcp=Object.fromEntries(v.map(x=>[x.id,x])); render(); });
+  DB.sub('cb_courses', v=>{ S.courses=Object.fromEntries(v.map(x=>[x.id,x])); render(); });
+  DB.sub('cb_meta', v=>{ S.info=v.find(x=>x.id==='info'); S.paysum=v.find(x=>x.id==='paysum'); S.config=v.find(x=>x.id==='config'); S.games=v.find(x=>x.id==='games')||null; render(); });
   if (S.me.org) DB.sub('cb_pay', v=>{ S.pay=Object.fromEntries(v.map(x=>[x.id,x])); render(); });
   addEventListener('hashchange', render);
   render();
@@ -307,6 +311,7 @@ V.home = () => {
   <section class="hero"><div class="k">BLACK &amp; GOLD</div><div class="big">Capricorn Birthday Bash</div>
   <div class="small muted">January 14–19, 2027 · Mission Resort + Club</div>${countdown()}
   <a href="#event" class="small" style="display:block;margin-top:12px;color:var(--ink)">Sneaker Ball · Sat, Jan 16 · 6:30–11:45 PM ›</a></section>
+  ${(()=>{ const r=rounds().find(x=>x.date===today()); return r?`<section class="card"><h2>Round ${r.n} today · ${esc(r.course)}</h2><div class="row"><a class="btn" href="#score/${r.id}">Score my group</a><a class="btn ghost" href="#board/${r.id}">Live leaderboard</a></div></section>`:''; })()}
   ${ORG()?`<div class="orgbar">Signed in as organizer (${esc(S.me.name)}). <a href="#admin">Organizer tools</a></div>`:''}
   <section class="card"><div class="row between"><h2>Latest</h2><a href="#updates" class="small">All updates</a></div>${ps.map(p=>postHTML(p)).join('')||'<div class="muted">No updates yet.</div>'}</section>
   <section class="card"><div class="row between"><h2>Coming up</h2><a href="#dates" class="small">Full timeline</a></div>${up.length?datesHTML(up,true):'<div class="muted">Nothing coming up.</div>'}</section>
@@ -320,7 +325,7 @@ V.dates = () => `<main><div class="row between"><h1>Timeline</h1>${ORG()?'<butto
   <section class="card">${datesHTML(dates())}</section></main>`;
 V.golf = () => {
   const gs=allGolfers();
-  return `<main><h1>Golf</h1><div class="muted small">${gs.length} golfers · Mission Resort + Club</div>
+  return `<main>${golfNav('golf')}<h1 style="margin-top:6px">Tee times &amp; pairings</h1><div class="muted small">${gs.length} golfers · Mission Resort + Club</div>
   ${rounds().map(r=>{ const tees=[]; for (let t=r.first; t<=r.last; t=addMin(t,r.gap||8)) tees.push(t);
     const playing=gs.filter(g=>playsRound(g,r)).length, shown=r.show||ORG();
     return `<section class="card"><div class="row between"><h2 style="margin:0">Round ${r.n} · ${esc(r.course)}</h2>${ORG()?`<a class="btn ghost sm" href="#pair/${r.id}">Pairings</a>`:''}</div>
@@ -390,13 +395,181 @@ V.admin = () => {
   <section class="card"><button class="btn ghost sm" id="signOut">Sign out</button></section></main>`;
 };
 
+/* =================== GOLF: scoring, live leaderboard, games =================== */
+// Strokes: half the handicap, rounded up, never more than 9 (e.g. 7 → 4, 12 → 6, 20 → 9).
+// Net skins and net leaderboard use strokes on the hardest holes (by stroke index). Birdie pot = true (gross) birdies.
+const COURSES = {
+  'el-campeon':  { name:'El Campeón',  pars:[5,3,4,4,4,4,4,3,4, 5,4,3,4,5,3,4,5,4], si:[3,13,11,1,9,7,5,15,17, 16,6,14,10,2,18,12,4,8], verified:true },
+  'las-colinas': { name:'Las Colinas', pars:[4,3,4,4,5,3,4,4,4, 4,3,4,5,4,3,4,4,5], si:[14,16,2,6,10,18,12,4,8, 13,15,3,7,1,11,17,9,5], verified:false }
+};
+const gkey = n => String(n||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const cid = name => gkey(String(name||'').normalize('NFD').replace(/[̀-ͯ]/g,''));
+const course = r => { const id=cid(r?.course), base=COURSES[id]||{name:r?.course||'', pars:Array(18).fill(4), si:Array.from({length:18},(_,i)=>i+1)}; const o=S.courses?.[id]; return {...base, ...(o||{}), id}; };
+const hcpOf = n => { const v=S.hcp?.[gkey(n)]?.hcp; return v===undefined||v===null||v==='' ? null : +v; };
+const strokesOf = n => { const h=hcpOf(n); return h===null ? 0 : Math.min(9, Math.ceil(Math.max(0,h)/2)); };
+const strokeOn = (n, hole, c) => strokesOf(n) >= c.si[hole-1] ? 1 : 0;   // max 9 strokes, so at most 1 per hole
+const scoreDoc = (rid, n) => S.scores.find(s=>s.round===rid && s.name===n);
+const G = () => ({ skins:0, ctp:0, birdie:0, out:{}, ...(S.games||{}) });
+const inGame = (n, g) => !((G().out?.[g])||[]).includes(n);
+const golfersIn = r => allGolfers().filter(g=>playsRound(g,r)).map(g=>g.name);
+const toParStr = v => v===0 ? 'E' : (v>0?'+':'')+v;
+const ctpFt = e => e ? `${e.ft}' ${e.inch||0}"` : '';
+
+function lineFor(r, n){
+  const c=course(r), H=scoreDoc(r.id,n)?.holes||{}; let gross=0, net=0, par=0, thru=0, f9=0, b9=0;
+  for (let h=1; h<=18; h++){ const g=+H[h]; if (!(g>0)) continue; thru++; gross+=g; par+=c.pars[h-1]; net+=g-strokeOn(n,h,c); if (h<=9) f9+=g; else b9+=g; }
+  return { n, H, thru, gross, net, par, grossTP: gross-par, netTP: net-par, f9, b9, strokes: strokesOf(n), hcp: hcpOf(n) };
+}
+function boardRows(r){ const names=new Set([...golfersIn(r), ...S.scores.filter(s=>s.round===r.id).map(s=>s.name)]);
+  const rows=[...names].map(n=>lineFor(r,n)).sort((a,b)=>(a.thru?a.netTP:999)-(b.thru?b.netTP:999) || b.thru-a.thru || a.grossTP-b.grossTP);
+  let rank=0, prev=null; rows.forEach((x,i)=>{ const k=x.thru?x.netTP:null; if (k!==prev){ rank=i+1; prev=k; } x.rank=k===null?'':rank; }); return rows; }
+function skinsFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n,'skins')), wins=[];
+  for (let h=1; h<=18; h++){ const sc=names.map(n=>({n, g:+(scoreDoc(r.id,n)?.holes||{})[h]})).filter(x=>x.g>0).map(x=>({...x, net:x.g-strokeOn(x.n,h,c)}));
+    if (!sc.length) continue; const lo=Math.min(...sc.map(x=>x.net)), w=sc.filter(x=>x.net===lo); if (w.length===1) wins.push({h, n:w[0].n, net:lo, g:w[0].g}); }
+  const pot=G().skins*names.length, each=wins.length?pot/wins.length:0; return {pot, players:names.length, wins, each}; }
+function birdiesFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n,'birdie')), list=[];
+  names.forEach(n=>{ const H=scoreDoc(r.id,n)?.holes||{}; for (let h=1; h<=18; h++){ const g=+H[h]; if (g>0 && g<=c.pars[h-1]-1) list.push({n,h,g,label: g<=c.pars[h-1]-2?'Eagle':'Birdie'}); } });
+  const pot=G().birdie*names.length, each=list.length?pot/list.length:0; return {pot, players:names.length, list, each}; }
+function ctpFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n,'ctp')), p3=c.pars.map((p,i)=>p===3?i+1:0).filter(Boolean);
+  const holes=p3.map(h=>({h, e:S.ctp.find(x=>x.round===r.id && x.hole===h)})); const won=holes.filter(x=>x.e).length;
+  const pot=G().ctp*names.length, each=p3.length?pot/p3.length:0; return {pot, players:names.length, holes, each, won}; }
+
+/* ---------- sub-navigation for the Golf tab ---------- */
+const golfNav = cur => `<div class="row" style="gap:6px">${[['golf','Tee times'],['score','Score'],['board','Leaderboard']].map(([h,l])=>`<a href="#${h}" class="btn ${cur===h?'':'ghost'} sm">${l}</a>`).join('')}${ORG()?`<a href="#golfadmin" class="btn ${cur==='golfadmin'?'':'ghost'} sm">Setup</a>`:''}</div>`;
+const curRound = () => { const t=today(), rs=rounds(); return rs.find(r=>r.date===t) || rs.find(r=>r.date>t) || rs[rs.length-1]; };
+
+/* ---------- Score my group ---------- */
+const SGK = rid => '3g-cb-group-'+rid;
+const myGroupFor = rid => { try{ return JSON.parse(localStorage.getItem(SGK(rid))||'null'); }catch(e){ return S['sg'+rid]||null; } };
+const setMyGroup = (rid, names) => { S['sg'+rid]=names; try{ names ? localStorage.setItem(SGK(rid), JSON.stringify(names)) : localStorage.removeItem(SGK(rid)); }catch(e){} };
+V.score = (rid) => {
+  const r = S.golf.find(x=>x.id===rid) || curRound(); if (!r) return `<main>${golfNav('score')}<div class="card">No rounds yet.</div></main>`;
+  const c=course(r), grp=myGroupFor(r.id);
+  const chips = `<div class="row" style="gap:6px;margin-top:4px">${rounds().map(x=>`<a href="#score/${x.id}" class="chip ${x.id===r.id?'gold':''}" style="text-decoration:none">R${x.n}</a>`).join('')}</div>`;
+  if (!grp || S.pickOpen){
+    const sel=new Set(S.pick||grp||[]), pool=golfersIn(r).sort((a,b)=>a.localeCompare(b)), pairs=(r.show||ORG())?(r.groups||[]):[];
+    const order=pairs.map((g,i)=>({g,i})).sort((a,b)=>(b.g.some(isMe))-(a.g.some(isMe)));
+    return `<main>${golfNav('score')}${chips}<h1 style="margin-top:6px">Score my group</h1><div class="small muted">Round ${r.n} · ${esc(c.name)} · ${fmt(r.date,{weekday:'short',month:'short',day:'numeric'})}</div>
+    ${order.length?`<section class="card"><h2>Tap your group</h2>${order.map(({g,i})=>`<button class="btn ghost" style="width:100%;justify-content:flex-start;text-align:left;margin-top:6px" data-sgrp="${r.id}|${i}">${g.some(isMe)?'<b>Your group</b> · ':''}${t12(addMin(r.first,(r.gap||8)*i))} — ${esc(g.join(', '))}</button>`).join('')}</section>`:''}
+    <section class="card"><h2>${order.length?'Or pick players':'Pick the players you\'re scoring'}</h2><div class="tiny muted">Up to 4. One person scores the group in the app; another keeps a paper card.</div>
+    ${pool.map(n=>`<label class="li" style="grid-template-columns:auto 1fr auto"><input type="checkbox" style="width:auto" data-spk="${esc(n)}" ${sel.has(n)?'checked':''}><span>${esc(n)}</span><span class="tiny muted">${hcpOf(n)===null?'':`${strokesOf(n)} str`}</span></label>`).join('')}
+    <div class="row" style="margin-top:10px"><button class="btn" data-sgo="${r.id}" ${sel.size?'':'disabled'}>Start scoring (${sel.size})</button>${grp?'<button class="btn ghost" id="sCancel">Cancel</button>':''}</div></section></main>`;
+  }
+  const hk='cbhole-'+r.id; let hole=+(S[hk]||sessionStorage.getItem(hk)||0);
+  if (!hole){ hole=1; for (let h=1; h<=18; h++){ if (grp.every(n=>+(scoreDoc(r.id,n)?.holes||{})[h]>0)) hole=Math.min(18,h+1); else break; } }
+  const par=c.pars[hole-1], si=c.si[hole-1], done=h=>grp.every(n=>+(scoreDoc(r.id,n)?.holes||{})[h]>0);
+  const ce=S.ctp.find(x=>x.round===r.id && x.hole===hole);
+  const checkPanel = (nine) => { const hs=nine===9?[1,2,3,4,5,6,7,8,9]:[10,11,12,13,14,15,16,17,18], k=nine===9?'v9':'v18';
+    const ok=grp.every(n=>scoreDoc(r.id,n)?.[k]);
+    return `<section class="card"><h2>${nine===9?'Front 9':'Back 9'} — check against the card</h2>${grp.map(n=>{ const H=scoreDoc(r.id,n)?.holes||{}; const t=hs.reduce((a,h)=>a+(+H[h]||0),0); return `<div class="li"><span>${esc(n)}</span><b>${t}</b></div>`; }).join('')}
+    ${ok?'<div class="msg ok">✓ Matches the card</div>':`<button class="btn" style="margin-top:8px" data-sver="${r.id}|${k}">${nine===9?'Front 9 matches the card':'Scores match · finish round'}</button>`}</section>`; };
+  return `<main>${golfNav('score')}${chips}
+  <div class="row between" style="margin-top:6px"><div><h1 style="margin:0">Hole ${hole}</h1><div class="small muted">Par ${par} · Stroke hole ${si} · ${esc(c.name)}</div></div><button class="btn ghost sm" id="sChange">Change group</button></div>
+  <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:3px">${Array.from({length:18},(_,i)=>i+1).map(h=>`<button data-shole="${r.id}|${h}" style="padding:7px 0;border-radius:8px;border:1px solid ${h===hole?'var(--gold)':'var(--line)'};background:${done(h)?'#2a2412':'var(--card2)'};color:${h===hole?'var(--gold2)':'var(--ink)'};font-weight:700">${h}</button>`).join('')}</div>
+  <section class="card">${grp.map(n=>{ const v=+(scoreDoc(r.id,n)?.holes||{})[hole]||0, st=strokeOn(n,hole,c);
+    return `<div class="li" style="grid-template-columns:1fr auto"><span><b>${esc(n)}</b>${st?' <span class="chip gold" style="padding:0 7px">●&nbsp;stroke</span>':''}<div class="tiny muted">${(()=>{ const L=lineFor(r,n); return L.thru?`Gross ${L.gross} (${toParStr(L.grossTP)}) · Net ${toParStr(L.netTP)}`:'—'; })()}</div></span>
+    <span class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn ghost sm" style="width:44px" data-sdec="${r.id}|${hole}|${esc(n)}">−</button><b style="min-width:30px;text-align:center;font-size:22px;color:${v?(v<par?'var(--good)':v>par?'var(--bad)':'var(--ink)'):'var(--muted)'}">${v||'–'}</b><button class="btn ghost sm" style="width:44px" data-sinc="${r.id}|${hole}|${esc(n)}">+</button></span></div>`; }).join('')}
+  <div class="tiny muted" style="margin-top:6px">Tap + to start at par. ● = gets a stroke on this hole.</div></section>
+  ${par===3?`<section class="card"><h2>Closest to the pin</h2>${ce?`<div class="small">Leader: <b>${esc(ce.name)}</b> · ${ctpFt(ce)}</div>`:'<div class="small muted">No one on the green yet.</div>'}
+    <div class="row" style="flex-wrap:nowrap;margin-top:8px"><select id="ctpN" style="flex:2">${grp.filter(n=>inGame(n,'ctp')).map(n=>`<option>${esc(n)}</option>`).join('')}</select><input id="ctpF" type="number" inputmode="numeric" min="0" placeholder="ft" style="flex:1"><input id="ctpI" type="number" inputmode="numeric" min="0" max="11" placeholder="in" style="flex:1"></div>
+    <button class="btn sm" style="margin-top:8px" data-sctp="${r.id}|${hole}">Save distance</button><div class="tiny muted" style="margin-top:4px">Only replaces the leader if closer.</div><div class="msg" id="ctpMsg"></div></section>`:''}
+  ${hole===9 && done(9) ? checkPanel(9) : ''}${hole===18 && done(18) ? checkPanel(18) : ''}
+  <div class="row between"><button class="btn ghost" data-shole="${r.id}|${Math.max(1,hole-1)}" ${hole===1?'disabled':''}>‹ Hole ${Math.max(1,hole-1)}</button><a class="btn ghost sm" href="#board/${r.id}">Leaderboard</a><button class="btn" data-shole="${r.id}|${Math.min(18,hole+1)}" ${hole===18?'disabled':''}>Hole ${Math.min(18,hole+1)} ›</button></div>
+  </main>`;
+};
+
+/* ---------- Live leaderboard ---------- */
+V.board = (rid) => {
+  const rs=rounds(), overall = rid==='all', r = overall ? null : (S.golf.find(x=>x.id===rid) || curRound());
+  const chips = `<div class="row" style="gap:6px">${rs.map(x=>`<a href="#board/${x.id}" class="chip ${!overall&&x.id===r?.id?'gold':''}" style="text-decoration:none">R${x.n}</a>`).join('')}<a href="#board/all" class="chip ${overall?'gold':''}" style="text-decoration:none">Overall</a></div>`;
+  if (overall) return `<main>${golfNav('board')}${chips}${overallHTML()}</main>`;
+  if (!r) return `<main>${golfNav('board')}</main>`;
+  const c=course(r), rows=boardRows(r), sk=skinsFor(r), bd=birdiesFor(r), cp=ctpFor(r), g=G();
+  const amt = v => g[v] ? '' : ' <span class="tiny muted">(set amount in Setup)</span>';
+  return `<main>${golfNav('board')}${chips}<h1 style="margin-top:6px">Round ${r.n} · ${esc(c.name)}</h1><div class="small muted">${fmt(r.date,{weekday:'long',month:'short',day:'numeric'})} · ranked by net score to par</div>
+  <section class="card" style="padding:8px 10px"><table><thead><tr><th>#</th><th>Player</th><th style="text-align:right">Thru</th><th style="text-align:right">Gross</th><th style="text-align:right">Str</th><th style="text-align:right">Net</th></tr></thead><tbody>
+  ${rows.map(x=>`<tr${isMe(x.n)?' style="background:#2a2412"':''}><td>${x.rank}</td><td>${esc(x.n)}</td><td style="text-align:right">${x.thru===18?'F':x.thru||'–'}</td><td style="text-align:right">${x.thru?`${x.gross}`:'–'}</td><td style="text-align:right" class="muted">${x.hcp===null?'?':x.strokes}</td><td style="text-align:right;font-weight:700;color:var(--gold2)">${x.thru?toParStr(x.netTP):'–'}</td></tr>`).join('')}</tbody></table>
+  ${rows.some(x=>x.hcp===null)?'<div class="tiny muted" style="margin-top:6px">? = handicap not entered yet (playing with 0 strokes).</div>':''}</section>
+  <section class="card"><h2>Skins (net)${amt('skins')}</h2><div class="small muted">${sk.players} in · pot ${money(sk.pot)} · ${sk.wins.length} won${sk.wins.length?` · ${money(sk.each)} each`:''}</div>
+  ${sk.wins.length?sk.wins.map(w=>`<div class="li"><span>#${w.h} · ${esc(w.n)} <span class="tiny muted">${w.g}${w.net!==w.g?` (net ${w.net})`:''}</span></span><b>${money(sk.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No skins yet — a skin needs one outright low net score on a hole.</div>'}</section>
+  <section class="card"><h2>Birdie pot${amt('birdie')}</h2><div class="small muted">True birdies only (no strokes) · ${bd.players} in · pot ${money(bd.pot)}${bd.list.length?` · ${money(bd.each)} per birdie`:''}</div>
+  ${bd.list.length?bd.list.map(b=>`<div class="li"><span>${esc(b.n)} · #${b.h} ${b.label}</span><b>${money(bd.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No birdies yet.</div>'}</section>
+  <section class="card"><h2>Closest to the pin${amt('ctp')}</h2><div class="small muted">${cp.players} in · pot ${money(cp.pot)} · ${money(cp.each)} per par 3</div>
+  ${cp.holes.map(x=>`<div class="li"><span>#${x.h} · ${x.e?`${esc(x.e.name)} <span class="tiny muted">${ctpFt(x.e)}</span>`:'<span class="muted">open</span>'}</span><b>${x.e?money(cp.each):''}</b></div>`).join('')}</section>
+  ${!c.verified?`<div class="tiny muted">Las Colinas pars and stroke holes are from online scorecards — an organizer should check them against the card in Setup.</div>`:''}
+  </main>`;
+};
+function overallHTML(){
+  const rs=rounds().filter(r=>r.n<=3), names=new Set(rs.flatMap(r=>golfersIn(r)));
+  const rows=[...names].map(n=>{ const L=rs.map(r=>lineFor(r,n)); return {n, thru:L.reduce((a,x)=>a+x.thru,0), net:L.reduce((a,x)=>a+x.netTP,0), gross:L.reduce((a,x)=>a+x.gross,0), done:L.filter(x=>x.thru===18).length, per:L}; })
+    .sort((a,b)=>(a.thru?a.net:999)-(b.thru?b.net:999) || b.thru-a.thru);
+  let rank=0, prev=null; rows.forEach((x,i)=>{ const k=x.thru?x.net:null; if (k!==prev){ rank=i+1; prev=k; } x.rank=k===null?'':rank; });
+  return `<h1 style="margin-top:6px">Overall · low net</h1><div class="small muted">Rounds 1–3 (the rounds everyone plays) · net to par</div>
+  <section class="card" style="padding:8px 10px"><table><thead><tr><th>#</th><th>Player</th>${rs.map(r=>`<th style="text-align:right">R${r.n}</th>`).join('')}<th style="text-align:right">Net</th></tr></thead><tbody>
+  ${rows.map(x=>`<tr${isMe(x.n)?' style="background:#2a2412"':''}><td>${x.rank}</td><td>${esc(x.n)}</td>${x.per.map(L=>`<td style="text-align:right" class="muted">${L.thru?toParStr(L.netTP)+(L.thru<18?'*':''):'–'}</td>`).join('')}<td style="text-align:right;font-weight:700;color:var(--gold2)">${x.thru?toParStr(x.net):'–'}</td></tr>`).join('')}</tbody></table>
+  <div class="tiny muted" style="margin-top:6px">* round in progress</div></section>`;
+}
+
+/* ---------- Golf setup (organizers): handicaps, game amounts, course cards ---------- */
+V.golfadmin = () => {
+  if (!ORG()) return V.golf();
+  const names=allGolfers().map(g=>g.name).sort((a,b)=>a.localeCompare(b)), g=G();
+  return `<main>${golfNav('golfadmin')}<h1 style="margin-top:6px">Golf setup</h1>
+  <section class="card"><h2>Handicaps</h2><div class="small muted">Strokes = half the handicap, rounded up, max 9. Changes save as you go.</div>
+  ${names.map(n=>`<div class="li" style="grid-template-columns:1fr 80px 64px"><span>${esc(n)}</span><input type="number" inputmode="decimal" step="0.1" min="0" max="54" value="${hcpOf(n)??''}" data-hcp="${esc(n)}" placeholder="hcp" style="padding:8px"><span class="small" style="text-align:right">${hcpOf(n)===null?'<span class="muted">—</span>':`<b>${strokesOf(n)}</b> str`}</span></div>`).join('')}</section>
+  <section class="card"><h2>Games (per player, per round)</h2>
+  ${[['skins','Skins (net)'],['birdie','Birdie pot (true birdies)'],['ctp','Closest to the pin']].map(([k,l])=>`<div class="li" style="grid-template-columns:1fr 90px"><span>${l}</span><input type="number" inputmode="decimal" min="0" step="1" value="${g[k]||''}" data-gamt="${k}" placeholder="$" style="padding:8px"></div>`).join('')}
+  <details style="margin-top:8px"><summary class="small" style="color:var(--gold2)">Who's in each game (everyone by default)</summary>
+  ${names.map(n=>`<div class="li" style="grid-template-columns:1fr auto auto auto;gap:10px"><span class="small">${esc(n)}</span>${['skins','birdie','ctp'].map(k=>`<label class="tiny"><input type="checkbox" style="width:auto" data-gin="${k}|${esc(n)}" ${inGame(n,k)?'checked':''}> ${k==='birdie'?'Birdie':k==='ctp'?'CTP':'Skins'}</label>`).join('')}</div>`).join('')}</details></section>
+  ${Object.keys(COURSES).map(id=>{ const c={...COURSES[id], ...(S.courses?.[id]||{})}; return `<section class="card"><h2>${esc(c.name)} card</h2>${!c.verified?'<div class="small" style="color:var(--bad)">Please check against the real scorecard — online sources disagree for this course.</div>':''}
+    <label class="f" for="cp_${id}">Pars, holes 1–18 (comma separated)</label><input id="cp_${id}" value="${c.pars.join(',')}">
+    <label class="f" for="cs_${id}">Stroke index (handicap) holes 1–18</label><input id="cs_${id}" value="${c.si.join(',')}">
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-csave="${id}">Save card</button><span class="small muted">Par ${c.pars.reduce((a,b)=>a+b,0)}</span></div><div class="msg" id="cm_${id}"></div></section>`; }).join('')}
+  </main>`;
+};
+
+/* ---------- golf actions ---------- */
+async function setHole(rid, n, hole, v){ const d=scoreDoc(rid,n)||{round:rid, name:n, holes:{}}; const holes={...(d.holes||{})}; if (v>0) holes[hole]=v; else delete holes[hole];
+  const id=rid+'__'+gkey(n), rec={round:rid, name:n, holes, v9:!!d.v9, v18:!!d.v18, by:S.me.name, at:new Date().toISOString()};
+  const i=S.scores.findIndex(s=>s.id===id); if (i>=0) S.scores[i]={...rec,id}; else S.scores.push({...rec,id}); render(); await DB.set('cb_scores', id, rec); }
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('[data-sgrp],[data-sgo],#sCancel,#sChange,[data-shole],[data-sinc],[data-sdec],[data-sver],[data-sctp],[data-csave]'); if (!b || !S.me) return; const ds=b.dataset;
+  try{
+    if (ds.sgrp){ const [rid,i]=ds.sgrp.split('|'), r=S.golf.find(x=>x.id===rid); setMyGroup(rid, (r.groups[+i]||[]).slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
+    else if (ds.sgo){ setMyGroup(ds.sgo, [...(S.pick||myGroupFor(ds.sgo)||[])].slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
+    else if (b.id==='sCancel'){ S.pickOpen=false; S.pick=null; render(); }
+    else if (b.id==='sChange'){ S.pickOpen=true; S.pick=null; render(); }
+    else if (ds.shole){ const [rid,h]=ds.shole.split('|'); S['cbhole-'+rid]=+h; try{ sessionStorage.setItem('cbhole-'+rid, h); }catch(err){} render(); scrollTo(0,0); }
+    else if (ds.sinc||ds.sdec){ const [rid,h,n]=(ds.sinc||ds.sdec).split('|'), r=S.golf.find(x=>x.id===rid), par=course(r).pars[+h-1], cur=+(scoreDoc(rid,n)?.holes||{})[h]||0;
+      const v = ds.sinc ? (cur? Math.min(15,cur+1) : par) : (cur? Math.max(0,cur-1) : 0); if (v!==cur) await setHole(rid, n, +h, v); }
+    else if (ds.sver){ const [rid,k]=ds.sver.split('|'); for (const n of myGroupFor(rid)||[]){ const d=scoreDoc(rid,n); if (d) await DB.set('cb_scores', d.id, {round:d.round, name:d.name, holes:d.holes, v9:k==='v9'||!!d.v9, v18:k==='v18'||!!d.v18, by:S.me.name, at:new Date().toISOString()}); } }
+    else if (ds.sctp){ const [rid,h]=ds.sctp.split('|'), n=$('#ctpN')?.value, ft=+$('#ctpF').value, inch=+($('#ctpI').value||0), m=$('#ctpMsg');
+      if (!n || !(ft>=0) || $('#ctpF').value==='' || inch<0 || inch>11){ m.className='msg err'; m.textContent='Pick the player and enter feet (and inches 0–11).'; return; }
+      const cur=S.ctp.find(x=>x.round===rid && x.hole===+h), d=ft*12+inch;
+      if (cur && cur.ft*12+(cur.inch||0) <= d){ m.className='msg err'; m.textContent=`${cur.name} is closer (${ctpFt(cur)}). Not saved.`; return; }
+      await DB.set('cb_ctp', rid+'__'+h, {round:rid, hole:+h, name:n, ft, inch, by:S.me.name, at:new Date().toISOString()}); m.className='msg ok'; m.textContent=`${n} is the new leader on #${h}.`; }
+    else if (ds.csave){ const id=ds.csave, nums=s=>s.split(/[ ,]+/).map(Number).filter(x=>x>0), pars=nums($('#cp_'+id).value), si=nums($('#cs_'+id).value), m=$('#cm_'+id);
+      if (pars.length!==18 || si.length!==18 || new Set(si).size!==18){ m.className='msg err'; m.textContent='Need 18 pars and 18 different stroke-index numbers (1–18).'; return; }
+      await DB.set('cb_courses', id, {pars, si, verified:true}); m.className='msg ok'; m.textContent='Card saved.'; }
+  }catch(err){ console.error(err); alertMsg('That didn\'t save. Check your connection and try again.'); }
+});
+document.addEventListener('change', async e=>{ const t=e.target, ds=t.dataset||{}; if (!S.me) return;
+  try{
+    if (ds.spk){ const s=new Set(S.pick||myGroupFor(location.hash.split('/')[1]||curRound()?.id)||[]); if (t.checked){ if (s.size>=4){ t.checked=false; return; } s.add(ds.spk); } else s.delete(ds.spk); S.pick=[...s]; render(); }
+    else if (ds.hcp){ const v=t.value.trim(); await DB.set('cb_hcp', gkey(ds.hcp), {name:ds.hcp, hcp: v===''?null:+v, at:new Date().toISOString()}); }
+    else if (ds.gamt){ await DB.set('cb_meta','games',{...G(), [ds.gamt]: +t.value||0}); }
+    else if (ds.gin){ const [k,n]=ds.gin.split('|'), g=G(), out=new Set(g.out?.[k]||[]); t.checked?out.delete(n):out.add(n); await DB.set('cb_meta','games',{...g, out:{...(g.out||{}), [k]:[...out]}}); }
+  }catch(err){ console.error(err); alertMsg('That didn\'t save. Check your connection and try again.'); }
+});
+function alertMsg(t){ modal(`<div>${esc(t)}</div><div class="row" style="margin-top:12px"><button class="btn ghost sm" data-close>OK</button></div>`); }
+
 /* ---------- render ---------- */
 function render(){
   if (!S.me) return;
   const [r,arg] = (location.hash.slice(1)||'home').split('/'); S.route = V[r] ? r : 'home';
   const focus=document.activeElement, fid=focus?.id, val=focus?.value, sel=[focus?.selectionStart,focus?.selectionEnd];
   const keep={}; document.querySelectorAll('input[id^="c_"],#pcNew,#orgEmail,#orgName').forEach(i=>keep[i.id]=i.value);
-  const tab = (h,ic,l) => `<a href="#${h}" class="${S.route===h||(h==='golf'&&S.route==='pair')||(h==='updates'&&S.route==='dates')?'on':''}"><b>${ic}</b>${l}</a>`;
+  const tab = (h,ic,l) => `<a href="#${h}" class="${S.route===h||(h==='golf'&&['pair','score','board','golfadmin'].includes(S.route))||(h==='updates'&&S.route==='dates')?'on':''}"><b>${ic}</b>${l}</a>`;
   $('#app').innerHTML = V[S.route](arg) + `<nav class="tabs">${tab('home','⌂','Home')}${tab('updates','📣','Updates')}${tab('golf','⛳','Golf')}${tab('event','🎉','Event')}${tab('photos','📷','Photos')}</nav>`;
   Object.entries(keep).forEach(([k,v])=>{ const el=document.getElementById(k); if (el) el.value=v; });
   if (fid){ const el=document.getElementById(fid); if (el){ el.focus(); try{ el.setSelectionRange(...sel); }catch(e){} } }
@@ -528,7 +701,7 @@ document.addEventListener('click', async e=>{
 });
 const confirmDel = what => window.confirm(`Delete ${what}?`);
 
-if (DEMO) window.S = S;
+if (DEMO) Object.assign(window, {S, strokesOf, lineFor, skinsFor, birdiesFor, ctpFor});
 (DEMO ? initDemo : initFirebase)().catch(e=>{ console.error(e); $('#app').innerHTML='<div class="gate"><div class="card"><h1>Capricorn Bash</h1><p>Couldn\'t load. Check your connection and reload.</p></div></div>'; });
 </script>
 </body>
