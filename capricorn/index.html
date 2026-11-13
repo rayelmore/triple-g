@@ -413,7 +413,7 @@ const G = () => ({ skins:0, ctp:0, birdie:0, out:{}, ...(S.games||{}) });
 const inGame = (n, g) => !((G().out?.[g])||[]).includes(n);
 const golfersIn = r => allGolfers().filter(g=>playsRound(g,r)).map(g=>g.name);
 const toParStr = v => v===0 ? 'E' : (v>0?'+':'')+v;
-const ctpFt = e => e ? `${e.ft}' ${e.inch||0}"` : '';
+const ctpFt = e => '';   // Capricorn CTP uses a marker on the green — no distances
 
 function lineFor(r, n){
   const c=course(r), H=scoreDoc(r.id,n)?.holes||{}; let gross=0, net=0, par=0, thru=0, f9=0, b9=0;
@@ -431,7 +431,7 @@ function birdiesFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n
   names.forEach(n=>{ const H=scoreDoc(r.id,n)?.holes||{}; for (let h=1; h<=18; h++){ const g=+H[h]; if (g>0 && g<=c.pars[h-1]-1) list.push({n,h,g,label: g<=c.pars[h-1]-2?'Eagle':'Birdie'}); } });
   const pot=G().birdie*names.length, each=list.length?pot/list.length:0; return {pot, players:names.length, list, each}; }
 function ctpFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n,'ctp')), p3=c.pars.map((p,i)=>p===3?i+1:0).filter(Boolean);
-  const holes=p3.map(h=>({h, e:S.ctp.find(x=>x.round===r.id && x.hole===h)})); const won=holes.filter(x=>x.e).length;
+  const holes=p3.map(h=>{ const e=S.ctp.find(x=>x.round===r.id && x.hole===h), v=e?+(scoreDoc(r.id,e.name)?.holes||{})[h]||0:0; return {h, e: e && v>0 && v<=c.pars[h-1] ? e : null}; }); const won=holes.filter(x=>x.e).length;
   const pot=G().ctp*names.length, each=p3.length?pot/p3.length:0; return {pot, players:names.length, holes, each, won}; }
 
 /* ---------- sub-navigation for the Golf tab ---------- */
@@ -470,9 +470,11 @@ V.score = (rid) => {
     return `<div class="li" style="grid-template-columns:1fr auto"><span><b>${esc(n)}</b>${st?' <span class="chip gold" style="padding:0 7px">●&nbsp;stroke</span>':''}<div class="tiny muted">${(()=>{ const L=lineFor(r,n); return L.thru?`Gross ${L.gross} (${toParStr(L.grossTP)}) · Net ${toParStr(L.netTP)}`:'—'; })()}</div></span>
     <span class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn ghost sm" style="width:44px" data-sdec="${r.id}|${hole}|${esc(n)}">−</button><b style="min-width:30px;text-align:center;font-size:22px;color:${v?(v<par?'var(--good)':v>par?'var(--bad)':'var(--ink)'):'var(--muted)'}">${v||'–'}</b><button class="btn ghost sm" style="width:44px" data-sinc="${r.id}|${hole}|${esc(n)}">+</button></span></div>`; }).join('')}
   <div class="tiny muted" style="margin-top:6px">Tap + to start at par. ● = gets a stroke on this hole.</div></section>
-  ${par===3?`<section class="card"><h2>Closest to the pin</h2>${ce?`<div class="small">Leader: <b>${esc(ce.name)}</b> · ${ctpFt(ce)}</div>`:'<div class="small muted">No one on the green yet.</div>'}
-    <div class="row" style="flex-wrap:nowrap;margin-top:8px"><select id="ctpN" style="flex:2">${grp.filter(n=>inGame(n,'ctp')).map(n=>`<option>${esc(n)}</option>`).join('')}</select><input id="ctpF" type="number" inputmode="numeric" min="0" placeholder="ft" style="flex:1"><input id="ctpI" type="number" inputmode="numeric" min="0" max="11" placeholder="in" style="flex:1"></div>
-    <button class="btn sm" style="margin-top:8px" data-sctp="${r.id}|${hole}">Save distance</button><div class="tiny muted" style="margin-top:4px">Only replaces the leader if closer.</div><div class="msg" id="ctpMsg"></div></section>`:''}
+  ${par===3?(()=>{ const elig=grp.filter(n=>inGame(n,'ctp')).filter(n=>{ const v=+(scoreDoc(r.id,n)?.holes||{})[hole]||0; return v>0 && v<=par; });
+    return `<section class="card"><h2>Closest to the pin</h2><div class="small">${ce?`Marker is with <b>${esc(ce.name)}</b>`:'<span class="muted">No marker on the green yet.</span>'}</div>
+    <div class="tiny muted" style="margin:4px 0 8px">Did someone in your group move the marker closer <b>and make par or better</b>? Enter scores first, then tap his name.</div>
+    ${elig.length?`<div class="row">${elig.map(n=>`<button class="btn ${ce?.name===n?'':'ghost'} sm" data-sctp="${r.id}|${hole}|${esc(n)}">${esc(n)} moved it</button>`).join('')}</div>`:'<div class="small muted">Nobody in your group has par or better on this hole yet.</div>'}
+    ${ce && ORG()?`<button class="btn danger sm" style="margin-top:8px" data-sctpclr="${r.id}|${hole}">Clear marker (organizer)</button>`:''}<div class="msg" id="ctpMsg"></div></section>`; })():''}
   ${hole===9 && done(9) ? checkPanel(9) : ''}${hole===18 && done(18) ? checkPanel(18) : ''}
   <div class="row between"><button class="btn ghost" data-shole="${r.id}|${Math.max(1,hole-1)}" ${hole===1?'disabled':''}>‹ Hole ${Math.max(1,hole-1)}</button><a class="btn ghost sm" href="#board/${r.id}">Leaderboard</a><button class="btn" data-shole="${r.id}|${Math.min(18,hole+1)}" ${hole===18?'disabled':''}>Hole ${Math.min(18,hole+1)} ›</button></div>
   </main>`;
@@ -494,7 +496,7 @@ V.board = (rid) => {
   ${sk.wins.length?sk.wins.map(w=>`<div class="li"><span>#${w.h} · ${esc(w.n)} <span class="tiny muted">${w.g}${w.net!==w.g?` (net ${w.net})`:''}</span></span><b>${money(sk.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No skins yet — a skin needs one outright low net score on a hole.</div>'}</section>
   <section class="card"><h2>Birdie pot${amt('birdie')}</h2><div class="small muted">True birdies only (no strokes) · ${bd.players} in · pot ${money(bd.pot)}${bd.list.length?` · ${money(bd.each)} per birdie`:''}</div>
   ${bd.list.length?bd.list.map(b=>`<div class="li"><span>${esc(b.n)} · #${b.h} ${b.label}</span><b>${money(bd.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No birdies yet.</div>'}</section>
-  <section class="card"><h2>Closest to the pin${amt('ctp')}</h2><div class="small muted">${cp.players} in · pot ${money(cp.pot)} · ${money(cp.each)} per par 3</div>
+  <section class="card"><h2>Closest to the pin${amt('ctp')}</h2><div class="small muted">Marker on the green · par or better to win · ${cp.players} in · pot ${money(cp.pot)} · ${money(cp.each)} per par 3</div>
   ${cp.holes.map(x=>`<div class="li"><span>#${x.h} · ${x.e?`${esc(x.e.name)} <span class="tiny muted">${ctpFt(x.e)}</span>`:'<span class="muted">open</span>'}</span><b>${x.e?money(cp.each):''}</b></div>`).join('')}</section>
   ${!c.verified?`<div class="tiny muted">Las Colinas pars and stroke holes are from online scorecards — an organizer should check them against the card in Setup.</div>`:''}
   </main>`;
@@ -533,7 +535,7 @@ async function setHole(rid, n, hole, v){ const d=scoreDoc(rid,n)||{round:rid, na
   const id=rid+'__'+gkey(n), rec={round:rid, name:n, holes, v9:!!d.v9, v18:!!d.v18, by:S.me.name, at:new Date().toISOString()};
   const i=S.scores.findIndex(s=>s.id===id); if (i>=0) S.scores[i]={...rec,id}; else S.scores.push({...rec,id}); render(); await DB.set('cb_scores', id, rec); }
 document.addEventListener('click', async e=>{
-  const b=e.target.closest('[data-sgrp],[data-sgo],#sCancel,#sChange,[data-shole],[data-sinc],[data-sdec],[data-sver],[data-sctp],[data-csave]'); if (!b || !S.me) return; const ds=b.dataset;
+  const b=e.target.closest('[data-sgrp],[data-sgo],#sCancel,#sChange,[data-shole],[data-sinc],[data-sdec],[data-sver],[data-sctp],[data-sctpclr],[data-csave]'); if (!b || !S.me) return; const ds=b.dataset;
   try{
     if (ds.sgrp){ const [rid,i]=ds.sgrp.split('|'), r=S.golf.find(x=>x.id===rid); setMyGroup(rid, (r.groups[+i]||[]).slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
     else if (ds.sgo){ setMyGroup(ds.sgo, [...(S.pick||myGroupFor(ds.sgo)||[])].slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
@@ -543,11 +545,10 @@ document.addEventListener('click', async e=>{
     else if (ds.sinc||ds.sdec){ const [rid,h,n]=(ds.sinc||ds.sdec).split('|'), r=S.golf.find(x=>x.id===rid), par=course(r).pars[+h-1], cur=+(scoreDoc(rid,n)?.holes||{})[h]||0;
       const v = ds.sinc ? (cur? Math.min(15,cur+1) : par) : (cur? Math.max(0,cur-1) : 0); if (v!==cur) await setHole(rid, n, +h, v); }
     else if (ds.sver){ const [rid,k]=ds.sver.split('|'); for (const n of myGroupFor(rid)||[]){ const d=scoreDoc(rid,n); if (d) await DB.set('cb_scores', d.id, {round:d.round, name:d.name, holes:d.holes, v9:k==='v9'||!!d.v9, v18:k==='v18'||!!d.v18, by:S.me.name, at:new Date().toISOString()}); } }
-    else if (ds.sctp){ const [rid,h]=ds.sctp.split('|'), n=$('#ctpN')?.value, ft=+$('#ctpF').value, inch=+($('#ctpI').value||0), m=$('#ctpMsg');
-      if (!n || !(ft>=0) || $('#ctpF').value==='' || inch<0 || inch>11){ m.className='msg err'; m.textContent='Pick the player and enter feet (and inches 0–11).'; return; }
-      const cur=S.ctp.find(x=>x.round===rid && x.hole===+h), d=ft*12+inch;
-      if (cur && cur.ft*12+(cur.inch||0) <= d){ m.className='msg err'; m.textContent=`${cur.name} is closer (${ctpFt(cur)}). Not saved.`; return; }
-      await DB.set('cb_ctp', rid+'__'+h, {round:rid, hole:+h, name:n, ft, inch, by:S.me.name, at:new Date().toISOString()}); m.className='msg ok'; m.textContent=`${n} is the new leader on #${h}.`; }
+    else if (ds.sctp){ const [rid,hh,n]=ds.sctp.split('|'), r=S.golf.find(x=>x.id===rid), par=course(r).pars[+hh-1], v=+(scoreDoc(rid,n)?.holes||{})[hh]||0, m=$('#ctpMsg');
+      if (!(v>0 && v<=par)){ m.className='msg err'; m.textContent=`${n} needs par or better on this hole to win closest to the pin.`; return; }
+      await DB.set('cb_ctp', rid+'__'+hh, {round:rid, hole:+hh, name:n, by:S.me.name, at:new Date().toISOString()}); }
+    else if (ds.sctpclr){ const [rid,hh]=ds.sctpclr.split('|'); if (confirm('Clear the closest-to-the-pin marker on this hole?')) await DB.del('cb_ctp', rid+'__'+hh); }
     else if (ds.csave){ const id=ds.csave, nums=s=>s.split(/[ ,]+/).map(Number).filter(x=>x>0), pars=nums($('#cp_'+id).value), si=nums($('#cs_'+id).value), m=$('#cm_'+id);
       if (pars.length!==18 || si.length!==18 || new Set(si).size!==18){ m.className='msg err'; m.textContent='Need 18 pars and 18 different stroke-index numbers (1–18).'; return; }
       await DB.set('cb_courses', id, {pars, si, verified:true}); m.className='msg ok'; m.textContent='Card saved.'; }
