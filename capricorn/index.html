@@ -527,6 +527,9 @@ V.golfadmin = () => {
     <label class="f" for="cp_${id}">Pars, holes 1–18 (comma separated)</label><input id="cp_${id}" value="${c.pars.join(',')}">
     <label class="f" for="cs_${id}">Stroke index (handicap) holes 1–18</label><input id="cs_${id}" value="${c.si.join(',')}">
     <div class="row" style="margin-top:8px"><button class="btn sm" data-csave="${id}">Save card</button><span class="small muted">Par ${c.pars.reduce((a,b)=>a+b,0)}</span></div><div class="msg" id="cm_${id}"></div></section>`; }).join('')}
+  <section class="card"><h2>Clear scores</h2><div class="small muted">Use after a practice round, or to start a round over. Deletes scores and closest-to-the-pin markers. Handicaps, pairings and game amounts are kept.</div>
+  <div class="row" style="margin-top:8px">${rounds().map(r=>{ const n=S.scores.filter(s=>s.round===r.id).length; return `<button class="btn danger sm" data-clr="${r.id}" ${n?'':'disabled'}>Round ${r.n}${n?` (${n})`:''}</button>`; }).join('')}
+  <button class="btn danger sm" data-clr="all" ${S.scores.length||S.ctp.length?'':'disabled'}>All rounds</button></div><div class="msg" id="clrMsg" role="status"></div></section>
   </main>`;
 };
 
@@ -535,9 +538,19 @@ async function setHole(rid, n, hole, v){ const d=scoreDoc(rid,n)||{round:rid, na
   const id=rid+'__'+gkey(n), rec={round:rid, name:n, holes, v9:!!d.v9, v18:!!d.v18, by:S.me.name, at:new Date().toISOString()};
   const i=S.scores.findIndex(s=>s.id===id); if (i>=0) S.scores[i]={...rec,id}; else S.scores.push({...rec,id}); render(); await DB.set('cb_scores', id, rec); }
 document.addEventListener('click', async e=>{
-  const b=e.target.closest('[data-sgrp],[data-sgo],#sCancel,#sChange,[data-shole],[data-ssave],[data-sinc],[data-sdec],[data-sver],[data-sctp],[data-sctpclr],[data-csave]'); if (!b || !S.me) return; const ds=b.dataset;
+  const b=e.target.closest('[data-clr],[data-clrgo],[data-sgrp],[data-sgo],#sCancel,#sChange,[data-shole],[data-ssave],[data-sinc],[data-sdec],[data-sver],[data-sctp],[data-sctpclr],[data-csave]'); if (!b || !S.me) return; const ds=b.dataset;
   try{
-    if (ds.sgrp){ const [rid,i]=ds.sgrp.split('|'), r=S.golf.find(x=>x.id===rid); setMyGroup(rid, (r.groups[+i]||[]).slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
+    if (ds.clr){ const all=ds.clr==='all', r=S.golf.find(x=>x.id===ds.clr), sc=S.scores.filter(s=>all||s.round===ds.clr), ct=S.ctp.filter(x=>all||x.round===ds.clr);
+      const what = all ? 'ALL rounds' : `Round ${r.n} (${esc(r.course)})`;
+      modal(`<h2>Are you sure?</h2><p>This permanently deletes <b>${what}</b>: ${sc.length} player scorecard${sc.length===1?'':'s'} and ${ct.length} closest-to-the-pin marker${ct.length===1?'':'s'}. It can't be undone.</p>
+      <label class="f" for="clrType">Type <b>CLEAR</b> to confirm</label><input id="clrType" autocomplete="off" autocapitalize="characters">
+      <div class="row" style="margin-top:14px"><button class="btn danger" data-clrgo="${ds.clr}">Yes, delete scores</button><button class="btn ghost" data-close>Cancel</button></div><div class="msg" id="fMsg"></div>`); }
+    else if (ds.clrgo){ const fm=$('#fMsg'); if (($('#clrType').value||'').trim().toUpperCase()!=='CLEAR'){ fm.className='msg err'; fm.textContent='Type CLEAR to confirm.'; return; }
+      const all=ds.clrgo==='all', sc=S.scores.filter(s=>all||s.round===ds.clrgo), ct=S.ctp.filter(x=>all||x.round===ds.clrgo); b.disabled=true; fm.className='msg'; fm.textContent='Deleting…';
+      for (const s of sc) await DB.del('cb_scores', s.id); for (const x of ct) await DB.del('cb_ctp', x.id);
+      rounds().forEach(r=>{ if (all||r.id===ds.clrgo){ delete S['cbhole-'+r.id]; try{ sessionStorage.removeItem('cbhole-'+r.id); }catch(err){} } });
+      modal(''); const m=$('#clrMsg'); if (m){ m.className='msg ok'; m.textContent=`Cleared ${sc.length} scorecard${sc.length===1?'':'s'} and ${ct.length} marker${ct.length===1?'':'s'}.`; } }
+    else if (ds.sgrp){ const [rid,i]=ds.sgrp.split('|'), r=S.golf.find(x=>x.id===rid); setMyGroup(rid, (r.groups[+i]||[]).slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
     else if (ds.sgo){ setMyGroup(ds.sgo, [...(S.pick||myGroupFor(ds.sgo)||[])].slice(0,4)); S.pickOpen=false; S.pick=null; render(); }
     else if (b.id==='sCancel'){ S.pickOpen=false; S.pick=null; render(); }
     else if (b.id==='sChange'){ S.pickOpen=true; S.pick=null; render(); }
