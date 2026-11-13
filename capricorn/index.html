@@ -432,7 +432,7 @@ function birdiesFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n
   const pot=G().birdie*names.length, each=list.length?pot/list.length:0; return {pot, players:names.length, list, each}; }
 function ctpFor(r){ const c=course(r), names=golfersIn(r).filter(n=>inGame(n,'ctp')), p3=c.pars.map((p,i)=>p===3?i+1:0).filter(Boolean);
   const holes=p3.map(h=>{ const e=S.ctp.find(x=>x.round===r.id && x.hole===h), v=e?+(scoreDoc(r.id,e.name)?.holes||{})[h]||0:0; return {h, e: e && v>0 && v<=c.pars[h-1] ? e : null}; }); const won=holes.filter(x=>x.e).length;
-  const pot=G().ctp*names.length, each=p3.length?pot/p3.length:0; return {pot, players:names.length, holes, each, won}; }
+  const pot=G().ctp*names.length, each=won?pot/won:0; return {pot, players:names.length, holes, each, won}; }   // pot split only among par 3s that were won
 
 /* ---------- sub-navigation for the Golf tab ---------- */
 const golfNav = cur => `<div class="row" style="gap:6px">${[['golf','Tee times'],['score','Score'],['board','Leaderboard']].map(([h,l])=>`<a href="#${h}" class="btn ${cur===h?'':'ghost'} sm">${l}</a>`).join('')}${ORG()?`<a href="#golfadmin" class="btn ${cur==='golfadmin'?'':'ghost'} sm">Setup</a>`:''}</div>`;
@@ -496,7 +496,7 @@ V.board = (rid) => {
   ${sk.wins.length?sk.wins.map(w=>`<div class="li"><span>#${w.h} · ${esc(w.n)} <span class="tiny muted">${w.g}${w.net!==w.g?` (net ${w.net})`:''}</span></span><b>${money(sk.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No skins yet — a skin needs one outright low net score on a hole.</div>'}</section>
   <section class="card"><h2>Birdie pot${amt('birdie')}</h2><div class="small muted">True birdies only (no strokes) · ${bd.players} in · pot ${money(bd.pot)}${bd.list.length?` · ${money(bd.each)} per birdie`:''}</div>
   ${bd.list.length?bd.list.map(b=>`<div class="li"><span>${esc(b.n)} · #${b.h} ${b.label}</span><b>${money(bd.each)}</b></div>`).join(''):'<div class="small muted" style="margin-top:6px">No birdies yet.</div>'}</section>
-  <section class="card"><h2>Closest to the pin${amt('ctp')}</h2><div class="small muted">Marker on the green · par or better to win · ${cp.players} in · pot ${money(cp.pot)} · ${money(cp.each)} per par 3</div>
+  <section class="card"><h2>Closest to the pin${amt('ctp')}</h2><div class="small muted">Marker on the green · par or better to win · ${cp.players} in · pot ${money(cp.pot)} · ${cp.won?`split ${cp.won} way${cp.won>1?'s':''} · ${money(cp.each)} each`:'split among the par 3s that are won'}</div>
   ${cp.holes.map(x=>`<div class="li"><span>#${x.h} · ${x.e?`${esc(x.e.name)} <span class="tiny muted">${ctpFt(x.e)}</span>`:'<span class="muted">open</span>'}</span><b>${x.e?money(cp.each):''}</b></div>`).join('')}</section>
   ${!c.verified?`<div class="tiny muted">Las Colinas pars and stroke holes are from online scorecards — an organizer should check them against the card in Setup.</div>`:''}
   </main>`;
