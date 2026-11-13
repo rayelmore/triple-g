@@ -68,7 +68,7 @@ const SEED = {
     ['Resort','Mission Resort + Club, 10400 County Road 48, Howey-in-the-Hills, FL 34737'],
     ['Room reservations','Call 800-874-9053 and reference "Capricorn Birthday Bash". $189 deposit; balance due at checkout.'],
     ['Resort fee','$30 per day, added to your nightly stay'],
-    ['Black & Gold Sneaker Ball','Saturday, January 16, 7–11 PM, Legends Ballroom. Formal wear with sneakers — no flip flops.'],
+    ['Black & Gold Sneaker Ball','Saturday, January 16, 6:30–11:45 PM, Legends Ballroom & Terrace. Formal wear with sneakers — no flip flops.'],
     ['Buffet & bar','$121.83 per guest (includes tax and gratuity). Beef, chicken and fish. Cash bar for drinks.'],
     ['Pay buffet & bar','Zelle to Kelleye Elmore. Check that Kelleye Elmore shows as the recipient. Memo: Capricorn Bash – your name.'],
     ['Entertainment','DJ C-Rider'],
@@ -83,7 +83,7 @@ const SEED = {
     {date:'2027-01-14', title:'Capricorn Bash begins', note:'5-night guests arrive.'},
     {date:'2027-01-15', time:'12:36 PM', title:'Round 1 — El Campeón', note:'Tee times 12:36–1:08 PM.'},
     {date:'2027-01-16', time:'10:09 AM', title:'Round 2 — Las Colinas', note:'Tee times 10:09–10:41 AM.'},
-    {date:'2027-01-16', time:'7:00 PM', title:'Black & Gold Sneaker Ball', note:'Legends Ballroom, 7–11 PM. Formal with sneakers.'},
+    {date:'2027-01-16', time:'6:30 PM', title:'Black & Gold Sneaker Ball', note:'Legends Ballroom & Terrace. Cocktail hour 6:30, dinner 7:15, cake 8:30, dancing 9:00. Formal with sneakers.'},
     {date:'2027-01-17', time:'10:12 AM', title:'Round 3 — El Campeón', note:'Tee times 10:12–10:44 AM.'},
     {date:'2027-01-18', time:'10:09 AM', title:'Round 4 — Las Colinas', note:'Tee times 10:09–10:41 AM (5-night guests).'},
     {date:'2027-01-19', title:'Capricorn Bash ends', note:'Safe travels, family!'}
@@ -101,6 +101,16 @@ const SEED = {
     {id:'p3', at:'2026-10-14T19:02:00', by:'Kelleye', title:'Quick update — 30 days to the payment deadline', body:'• Buffet & bar: Banquet Event Order received. Menu coming soon — beef, chicken and fish confirmed.\n• Entertainment: DJ C-Rider is confirmed!\n• Birthday cake: Bari Bakery is confirmed!\n• Legends Ballroom seating layout is in; table assignments later.\n• Room deposit ($189) due no later than December 15.\n\nMain event: Saturday, January 16, 7–11 PM.'},
     {id:'p2', at:'2026-09-02T08:29:00', by:'Kelleye', title:'Final room list submitted', body:'The final by-name room list (12 rooms, 22 guests) was submitted to and accepted by Mission Resort. See the Event tab for who\'s coming.'}
   ]
+};
+
+/* ---------- Black & Gold Sneaker Ball (from Kelleye's flyers) ---------- */
+const BALL = {
+  program: [['6:30 PM','Cocktail hour','Legends B + Terrace'],['7:00 PM','Birthday celebrants entrance','',1],['7:15 PM','Dinner service','American comfort buffet'],
+            ['8:00 PM','Celebration & mingling'],['8:30 PM','Cake cutting','',1],['9:00 PM','Music & dancing'],['11:45 PM','Evening concludes']],
+  flyers: [['img/evening-program.jpg','Evening program'],['img/dinner-menu.jpg','Dinner menu'],['img/bar-menu.jpg','Bar menu']],
+  menu: [['Soup','Cuban black bean with sour cream and green onion'],['Salads','Artisan green salad — vine-ripened tomato, carrot, beet (GF) · Classic spinach salad — purple onion, tomato, egg, candied pecans, warm bacon vinaigrette (GF)'],
+         ['Entrées','Buttermilk fried chicken · Grilled sliced skirt steak · Blackened market fish'],['Sides','Seasonal vegetables · Butter-whipped mashed potatoes'],['Dessert',"Chef's selection of desserts"],['Beverages','Deluxe cash bar · Coffee, iced tea and tea selection']],
+  bar: [['Signature drink','The Capricorn Old Fashioned — premium bourbon, aromatic bitters, simple syrup, orange peel, Luxardo cherry'],['Also serving','Premium spirits, wine, imported and domestic beers, assorted cocktails'],['Non-alcoholic','Iced tea, lemonade, soft drinks, bottled water']]
 };
 
 /* ---------- tiny helpers ---------- */
@@ -172,7 +182,14 @@ async function initFirebase(){
         if (!org){ gate(`${esc(user.email)} isn't on the organizer list. Ask Ray to add you, or use the group passcode instead.`); await A.signOut(auth); return; }
         S.me = {uid:user.uid, name: owner?'Ray':(cfg?.names?.[email]||user.email.split('@')[0]), email, org:true, owner};
       }
-      if (S.me.org){ const c = await DB.get('cb_meta','config').catch(()=>null); S.loadStep='loading the starter info'; if (!c?.seeded) await seedAll(); }
+      if (S.me.org){ const c = await DB.get('cb_meta','config').catch(()=>null); S.loadStep='loading the starter info'; if (!c?.seeded) await seedAll();
+        else if (S.me.owner && (c.v||1) < 2){ S.loadStep='updating the Ball times';   // one-time: Ball now 6:30–11:45 PM per Kelleye's program
+          const inf = await DB.get('cb_meta','info'); const r = inf?.rows?.find(x=>x[0]==='Black & Gold Sneaker Ball');
+          if (r && r[1]==='Saturday, January 16, 7–11 PM, Legends Ballroom. Formal wear with sneakers — no flip flops.'){ r[1]='Saturday, January 16, 6:30–11:45 PM, Legends Ballroom & Terrace. Formal wear with sneakers — no flip flops.'; await DB.set('cb_meta','info',{rows:inf.rows}); }
+          const nd = SEED.dates.find(d=>d.title==='Black & Gold Sneaker Ball');
+          for (let i=0;i<SEED.dates.length;i++){ const d=await DB.get('cb_dates','d'+i); if (d && d.title==='Black & Gold Sneaker Ball' && d.time==='7:00 PM') await DB.set('cb_dates','d'+i,{...nd}); }
+          await DB.set('cb_meta','config',{...c, v:2}); } }
+
       start();
     }catch(e){ console.error(e);
       const why = e?.code==='permission-denied' || /permission/i.test(e?.message||'')
@@ -289,7 +306,7 @@ V.home = () => {
   return `<main>
   <section class="hero"><div class="k">BLACK &amp; GOLD</div><div class="big">Capricorn Birthday Bash</div>
   <div class="small muted">January 14–19, 2027 · Mission Resort + Club</div>${countdown()}
-  <div class="small" style="margin-top:12px">Sneaker Ball · Sat, Jan 16 · 7–11 PM</div></section>
+  <a href="#event" class="small" style="display:block;margin-top:12px;color:var(--ink)">Sneaker Ball · Sat, Jan 16 · 6:30–11:45 PM ›</a></section>
   ${ORG()?`<div class="orgbar">Signed in as organizer (${esc(S.me.name)}). <a href="#admin">Organizer tools</a></div>`:''}
   <section class="card"><div class="row between"><h2>Latest</h2><a href="#updates" class="small">All updates</a></div>${ps.map(p=>postHTML(p)).join('')||'<div class="muted">No updates yet.</div>'}</section>
   <section class="card"><div class="row between"><h2>Coming up</h2><a href="#dates" class="small">Full timeline</a></div>${up.length?datesHTML(up,true):'<div class="muted">Nothing coming up.</div>'}</section>
@@ -333,7 +350,14 @@ V.pair = (rid) => {
 V.event = () => {
   const rows=(S.info?.rows)||SEED.info.rows, tg=S.people.reduce((a,p)=>a+guestsOf(p),0), golfers=allGolfers().length;
   return `<main><h1>Event details</h1>
-  <section class="card">${rows.map(([k,v])=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="tiny muted">${esc(k)}</div><div>${linkify(esc(v))}</div></div>`).join('').replace('border-top:1px solid var(--line)','border-top:0')}
+  <section class="card"><div class="tiny" style="letter-spacing:.16em;color:var(--gold)">SATURDAY, JANUARY 16</div><h2 style="margin:2px 0 2px">Black &amp; Gold Sneaker Ball</h2>
+  <div class="small muted">Legends Ballroom &amp; Terrace · Formal with sneakers</div>
+  <div style="margin-top:8px">${BALL.program.map(([t,w,s,hi])=>`<div class="li" style="grid-template-columns:78px 1fr"><b style="color:var(--gold2);font-size:14px">${t}</b><span${hi?' style="color:var(--gold2);font-weight:700"':''}>${esc(w)}${s?`<div class="tiny muted">${esc(s)}</div>`:''}</span></div>`).join('')}</div>
+  <div class="photos" style="margin-top:12px">${BALL.flyers.map(([src,l])=>`<figure style="margin:0"><img src="${src}" alt="${esc(l)} flyer" data-flyer="${src}" style="aspect-ratio:auto;height:150px;object-fit:cover;object-position:top"><figcaption class="tiny muted" style="text-align:center;margin-top:3px">${esc(l)}</figcaption></figure>`).join('')}</div>
+  <div class="tiny muted" style="margin-top:4px">Tap a flyer to see it full size.</div>
+  <details style="margin-top:10px"><summary class="small" style="color:var(--gold2)">Dinner menu</summary>${BALL.menu.map(([k,v])=>`<div style="padding:6px 0"><div class="tiny muted">${esc(k)}</div><div class="small">${esc(v)}</div></div>`).join('')}</details>
+  <details style="margin-top:6px"><summary class="small" style="color:var(--gold2)">Bar menu</summary>${BALL.bar.map(([k,v])=>`<div style="padding:6px 0"><div class="tiny muted">${esc(k)}</div><div class="small">${esc(v)}</div></div>`).join('')}</details></section>
+  <section class="card"><h2>Trip details</h2>${rows.map(([k,v])=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="tiny muted">${esc(k)}</div><div>${linkify(esc(v))}</div></div>`).join('').replace('border-top:1px solid var(--line)','border-top:0')}
   ${ORG()?'<button class="btn ghost sm" id="iEdit" style="margin-top:8px">Edit details</button>':''}</section>
   <section class="card"><div class="row between"><h2 style="margin:0">Who's coming</h2>${ORG()?'<button class="btn ghost sm" id="peNew">Add party</button>':''}</div>
   <div class="small muted" style="margin:4px 0 8px">${tg} guests · ${golfers} golfers · ${S.people.length} rooms</div>
@@ -448,7 +472,7 @@ document.addEventListener('change', async e=>{
 
 /* ---------- actions ---------- */
 document.addEventListener('click', async e=>{
-  const b=e.target.closest('button,a[data-cdel],a[data-dedit],a[data-peedit],a[data-unout],a[data-orgdel],img[data-ph]'); if (!b || !S.me) return;
+  const b=e.target.closest('button,a[data-cdel],a[data-dedit],a[data-peedit],a[data-unout],a[data-orgdel],img[data-ph],img[data-flyer]'); if (!b || !S.me) return;
   const ds=b.dataset, fm=()=>$('#fMsg');
   try{
     if (ds.cmt!==undefined && ds.cmt){ S.open[ds.cmt]=!S.open[ds.cmt]; render(); }
@@ -481,6 +505,7 @@ document.addEventListener('click', async e=>{
       E.groups=groups.map(g=>g.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1])).sort(()=>Math.random()-.5); render(); }
     else if (ds.unout){ e.preventDefault(); S.edit.out=S.edit.out.filter(x=>x!==ds.unout); render(); }
     else if (ds.psave){ const r=S.golf.find(x=>x.id===S.edit.id); await DB.set('cb_golf', r.id, {...r, groups:S.edit.groups.map(g=>[...g]), out:[...S.edit.out], show: ds.psave==='pub' ? true : !!r.show}); const m=$('#pMsg'); m.className='msg ok'; m.textContent= ds.psave==='pub'?'Published — everyone can see these pairings on the Golf tab.':'Draft saved.'; }
+    else if (ds.flyer){ modal(`<img class="full" src="${ds.flyer}" alt="Flyer" style="max-height:80vh"><div class="row" style="justify-content:flex-end;margin-top:8px"><a class="btn ghost sm" href="${ds.flyer}" download>Save</a><button class="btn ghost sm" data-close>Close</button></div>`); }
     else if (ds.ph){ const ph=S.photos.find(x=>x.id===ds.ph); modal(`<img class="full" src="${ph.thumb}" id="phBig" alt=""><div class="row between" style="margin-top:8px"><span class="small muted">${esc(ph.name)} · ${ago(ph.at)}</span><span class="row">${(ph.uid===S.me.uid||ORG())?`<button class="btn danger sm" data-phdel="${ph.id}">Delete</button>`:''}<button class="btn ghost sm" data-close>Close</button></span></div>`);
       const full=await DB.get('cb_photofull', ph.id).catch(()=>null); if (full && $('#phBig')) $('#phBig').src=full.data; }
     else if (ds.phdel){ if (confirmDel('this photo')){ await DB.del('cb_photos', ds.phdel); await DB.del('cb_photofull', ds.phdel).catch(()=>{}); modal(''); } }
