@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Capricorn Bash 2027</title>
+<meta name="theme-color" content="#0d0d0d">
+<style>
+:root{--bg:#0d0d0d;--card:#181715;--card2:#211f1b;--line:#38332a;--ink:#f4efe4;--muted:#b3aa98;--gold:#d8b45a;--gold2:#f0d48a;--good:#7fcf86;--bad:#ef8a80;--r:14px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+a{color:var(--gold2)}
+main{max-width:640px;margin:0 auto;padding:16px 14px 24px;display:grid;gap:14px}
+h1{font:700 26px Georgia,serif;margin:0;color:var(--gold2)}h2{font:700 19px Georgia,serif;margin:0 0 8px;color:var(--gold2)}h3{margin:12px 0 6px;font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.muted{color:var(--muted)}.small{font-size:14px}.tiny{font-size:12px}
+.hero{background:linear-gradient(160deg,#1d1a12,#0d0d0d 70%);border:1px solid #4a3f22;border-radius:var(--r);padding:20px 16px;text-align:center}
+.hero .k{letter-spacing:.18em;font-size:12px;color:var(--gold)}
+.hero .big{font:700 30px Georgia,serif;color:var(--gold2);margin:6px 0 2px}
+.cd{display:flex;justify-content:center;gap:10px;margin-top:12px}.cd div{background:#00000060;border:1px solid #4a3f22;border-radius:10px;padding:8px 10px;min-width:64px}.cd b{display:block;font-size:24px;color:var(--gold2)}.cd span{font-size:11px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--gold);color:#1a1405;border:0;border-radius:12px;padding:11px 16px;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--gold2);border:1px solid var(--gold)}.btn.sm{padding:7px 12px;font-size:14px}.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+.btn:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.between{justify-content:space-between}
+input,textarea,select{width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit;font-size:16px}
+textarea{min-height:110px}label.f{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+.post{border-top:1px solid var(--line);padding:12px 0}.post:first-child{border-top:0;padding-top:0}
+.post .meta{font-size:12px;color:var(--muted);margin-bottom:4px}.post .body{white-space:pre-wrap;line-height:1.5}
+.pin{color:var(--gold);font-size:12px;font-weight:700}
+.cm{background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:6px;font-size:14px}.cm b{color:var(--gold2)}
+.tl{display:grid;gap:0}.tli{display:grid;grid-template-columns:62px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.tli:first-child{border-top:0}
+.tli .d{text-align:center;background:var(--card2);border-radius:10px;padding:6px 0;height:max-content}.tli .d b{display:block;font-size:20px;color:var(--gold2)}.tli .d span{font-size:11px;color:var(--muted);text-transform:uppercase}
+.tli.past{opacity:.5}.due{color:var(--bad);font-weight:700;font-size:12px}
+.grp{background:var(--card2);border-radius:10px;padding:10px;margin-top:8px}.grp .t{font-weight:700;color:var(--gold2);font-size:14px}
+.grp.me{outline:2px solid var(--gold)}
+.chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px;margin:2px}
+.chip.gold{border-color:var(--gold);color:var(--gold2)}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer;background:var(--card2)}
+.bar{height:10px;background:var(--card2);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--gold)}
+.li{display:grid;grid-template-columns:1fr auto;gap:8px;padding:9px 0;border-top:1px solid var(--line);align-items:center}.li:first-child{border-top:0}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:#0d0d0df2;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));backdrop-filter:blur(8px);z-index:5}
+nav.tabs a{flex:1;text-align:center;color:var(--muted);text-decoration:none;font-size:11px;padding:4px 0}nav.tabs a b{display:block;font-size:20px;line-height:1.2}nav.tabs a.on{color:var(--gold2)}
+.gate{min-height:100vh;display:grid;place-items:center;padding:20px}.gate .card{max-width:380px;width:100%}
+.modal{position:fixed;inset:0;background:#000c;display:grid;place-items:center;z-index:9;padding:14px}.modal .card{max-width:560px;width:100%;max-height:90vh;overflow:auto}
+.full{max-width:100%;max-height:75vh;display:block;margin:0 auto;border-radius:8px}
+.msg{font-size:14px;margin-top:8px}.msg.err{color:var(--bad)}.msg.ok{color:var(--good)}
+.orgbar{background:#2a2412;border:1px solid #4a3f22;border-radius:10px;padding:8px 12px;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:7px 4px;border-top:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:600;border-top:0}
+.sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div id="app"><div class="gate"><div class="card"><h1>Capricorn Bash</h1><p class="muted">Loading…</p></div></div></div>
+<div id="modal"></div>
+<script type="module">
+/* ============ Capricorn Birthday Bash 2027 — one-stop site ============
+   Data lives in Firebase (same project as Triple-G), collections prefixed cb_.
+   Guests get in with the group passcode; Ray and Kelleye sign in as organizers.
+   Add ?demo=1 to the URL to try it with sample data and no sign-in. */
+const DEMO = new URLSearchParams(location.search).has('demo');
+const OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];
+const PP = 121.83;   // buffet & bar per guest
+
+/* ---------- starter content (from the GroupMe, through Nov 6, 2026) ---------- */
+const SEED = {
+  info: { rows: [
+    ['Dates','Thursday, January 14 – Tuesday, January 19, 2027 (MLK weekend)'],
+    ['Resort','Mission Resort + Club, 10400 County Road 48, Howey-in-the-Hills, FL 34737'],
+    ['Room reservations','Call 800-874-9053 and reference "Capricorn Birthday Bash". $189 deposit; balance due at checkout.'],
+    ['Resort fee','$30 per day, added to your nightly stay'],
+    ['Black & Gold Sneaker Ball','Saturday, January 16, 7–11 PM, Legends Ballroom. Formal wear with sneakers — no flip flops.'],
+    ['Buffet & bar','$121.83 per guest (includes tax and gratuity). Beef, chicken and fish. Cash bar for drinks.'],
+    ['Pay buffet & bar','Zelle to Kelleye Elmore. Check that Kelleye Elmore shows as the recipient. Memo: Capricorn Bash – your name.'],
+    ['Entertainment','DJ C-Rider'],
+    ['Birthday cake','Bari Bakery'],
+    ['Birthday honorees','Larry, DD, Ray, Carl and Karen (honorees add $200 toward the DJ and cake)'],
+    ['Golfers booked','19 (if a friend wants to golf with us but stay elsewhere, tell Kelleye ASAP)']
+  ]},
+  dates: [
+    {date:'2026-11-13', title:'Please send buffet & bar payment', note:'Kelleye asks for payments by today if possible, so she can pay the resort on the 15th.'},
+    {date:'2026-11-15', title:'Buffet & bar payment due — $121.83 per guest', note:'Zelle to Kelleye Elmore (see Event details). No exceptions.', due:true},
+    {date:'2026-12-15', title:'Room deposit due — $189', note:'Call Mission Resort at 800-874-9053, reference "Capricorn Birthday Bash". No exceptions.', due:true},
+    {date:'2027-01-14', title:'Capricorn Bash begins', note:'5-night guests arrive.'},
+    {date:'2027-01-15', time:'12:36 PM', title:'Round 1 — El Campeón', note:'Tee times 12:36–1:08 PM.'},
+    {date:'2027-01-16', time:'10:09 AM', title:'Round 2 — Las Colinas', note:'Tee times 10:09–10:41 AM.'},
+    {date:'2027-01-16', time:'7:00 PM', title:'Black & Gold Sneaker Ball', note:'Legends Ballroom, 7–11 PM. Formal with sneakers.'},
+    {date:'2027-01-17', time:'10:12 AM', title:'Round 3 — El Campeón', note:'Tee times 10:12–10:44 AM.'},
+    {date:'2027-01-18', time:'10:09 AM', title:'Round 4 — Las Colinas', note:'Tee times 10:09–10:41 AM (5-night guests).'},
+    {date:'2027-01-19', title:'Capricorn Bash ends', note:'Safe travels, family!'}
+  ],
+  golf: [
+    {id:'r1', n:1, date:'2027-01-15', course:'El Campeón', first:'12:36', last:'13:08', gap:8, groups:[], show:false},
+    {id:'r2', n:2, date:'2027-01-16', course:'Las Colinas', first:'10:09', last:'10:41', gap:8, groups:[], show:false},
+    {id:'r3', n:3, date:'2027-01-17', course:'El Campeón', first:'10:12', last:'10:44', gap:8, groups:[], show:false},
+    {id:'r4', n:4, date:'2027-01-18', course:'Las Colinas', first:'10:09', last:'10:41', gap:8, groups:[], show:false}
+  ],
+  people: [],   // real guest list is pasted in by an organizer (Organizer tools → Import), so names aren't in this public file
+  posts: [
+    {id:'p5', at:'2026-11-06T09:38:00', by:'Kelleye', pinned:true, title:'New tee times', body:'Our tee times are set:\n\n• Fri, Jan 15 — 12:36–1:08 PM, El Campeón\n• Sat, Jan 16 — 10:09–10:41 AM, Las Colinas\n• Sun, Jan 17 — 10:12–10:44 AM, El Campeón\n• Mon, Jan 18 — 10:09–10:41 AM, Las Colinas\n\nIf you have friends who want to golf with us but not stay at Mission, I need to know ASAP. We currently have 19 players booked.'},
+    {id:'p4', at:'2026-11-02T20:34:00', by:'Kelleye', title:'Buffet & bar payment tracker', body:'14 of 22 guests have paid ($1,705.62 collected). 8 guests are still outstanding ($974.64). Payments of $121.83 per person are due November 15 — I\'d appreciate them by November 13 if possible, since I pay the resort the full amount on the 15th.'},
+    {id:'p3', at:'2026-10-14T19:02:00', by:'Kelleye', title:'Quick update — 30 days to the payment deadline', body:'• Buffet & bar: Banquet Event Order received. Menu coming soon — beef, chicken and fish confirmed.\n• Entertainment: DJ C-Rider is confirmed!\n• Birthday cake: Bari Bakery is confirmed!\n• Legends Ballroom seating layout is in; table assignments later.\n• Room deposit ($189) due no later than December 15.\n\nMain event: Saturday, January 16, 7–11 PM.'},
+    {id:'p2', at:'2026-09-02T08:29:00', by:'Kelleye', title:'Final room list submitted', body:'The final by-name room list (12 rooms, 22 guests) was submitted to and accepted by Mission Resort. See the Event tab for who\'s coming.'}
+  ]
+};
+
+/* ---------- tiny helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '$'+(Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const D = s => new Date(s.length===10 ? s+'T12:00:00' : s);
+const fmt = (s,o) => D(s).toLocaleDateString('en-US',o);
+const today = () => new Date().toISOString().slice(0,10);
+const t12 = hm => { if (!hm) return ''; let [h,m]=hm.split(':').map(Number); const ap=h>=12?'PM':'AM'; h=h%12||12; return `${h}:${String(m).padStart(2,'0')} ${ap}`; };
+const addMin = (hm,n) => { let [h,m]=hm.split(':').map(Number); m+=n; h+=Math.floor(m/60); m%=60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; };
+const ago = s => { const m=Math.round((Date.now()-D(s))/60000); if (m<1) return 'just now'; if (m<60) return m+' min ago'; const h=Math.round(m/60); if (h<24) return h+' hr ago'; const d=Math.round(h/24); return d<7 ? d+' day'+(d>1?'s':'')+' ago' : fmt(s,{month:'short',day:'numeric'}); };
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* ---------- data layer: Firebase or in-memory demo ---------- */
+const S = { posts:[], comments:[], dates:[], golf:[], people:[], pay:{}, info:null, paysum:null, config:null, photos:[], me:null, route:'home', open:{} };
+let DB;
+async function initDemo(){
+  const mem = {}; const subs = {};
+  const fire = col => (subs[col]||[]).forEach(cb=>cb(Object.values(mem[col]||{})));
+  DB = {
+    sub:(col,cb)=>{ (subs[col]=subs[col]||[]).push(cb); setTimeout(()=>cb(Object.values(mem[col]||{})),0); },
+    get:async(col,id)=> (mem[col]||{})[id] || null,
+    set:async(col,id,data)=>{ (mem[col]=mem[col]||{})[id]={...data,id}; fire(col); },
+    del:async(col,id)=>{ delete (mem[col]||{})[id]; fire(col); }
+  };
+  S.me = {uid:'demo', name:'Demo Organizer', org:true, owner:true};
+  await seedAll();
+  const nm=['A','B','C','D','E','F','G','H','J','K','L','M']; for (const [i,x] of nm.entries()) await DB.set('cb_people','s'+i,{party:`Sample Party ${x}`, golfers: i%4===3?[`Golfer ${x}1`]:[`Golfer ${x}1`,`Golfer ${x}2`], others: i%4===3?[`Guest ${x}2`]:[], room: i%3?'DBL':'SGL', nights: i<2?5:3});
+  start();
+}
+async function initFirebase(){
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+  const F = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+  const A = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+  const app = initializeApp({ apiKey:"AIzaSyApcbnU40cR2YrDNGpZrhxqFmDkN4bfh2g", authDomain:"triple-g-de71a.firebaseapp.com", projectId:"triple-g-de71a",
+    storageBucket:"triple-g-de71a.firebasestorage.app", messagingSenderId:"647959305551", appId:"1:647959305551:web:c8de2ccca94cd7f745b93a" }, 'capricorn');
+  const fs = F.initializeFirestore(app, { ignoreUndefinedProperties:true }), auth = A.getAuth(app);
+  DB = {
+    sub:(col,cb)=>F.onSnapshot(F.collection(fs,col), s=>cb(s.docs.map(d=>({...d.data(), id:d.id}))), e=>{ console.warn(col,e.code); cb([]); }),
+    get:async(col,id)=>{ const d=await F.getDoc(F.doc(fs,col,id)); return d.exists()?{...d.data(),id:d.id}:null; },
+    set:(col,id,data)=>F.setDoc(F.doc(fs,col,id), data),
+    del:(col,id)=>F.deleteDoc(F.doc(fs,col,id))
+  };
+  DB.auth = { auth, A };
+  A.onAuthStateChanged(auth, async user=>{
+    if (!user){ gate(); return; }
+    try{
+      if (user.isAnonymous){
+        if (S.joining) return;   // passcode entry in progress; the Enter button finishes sign-in
+        const m = await DB.get('cb_members', user.uid);
+        if (!m){ gate(); return; }
+        S.me = {uid:user.uid, name:m.name, org:false};
+      } else {
+        const email=(user.email||'').toLowerCase(); let cfg=null;
+        try{ cfg = await DB.get('cb_meta','config'); }catch(e){}
+        const owner = OWNERS.includes(email), org = owner || (cfg?.orgs||[]).includes(email);
+        if (!org){ gate(`${esc(user.email)} isn't on the organizer list. Ask Ray to add you, or use the group passcode instead.`); await A.signOut(auth); return; }
+        S.me = {uid:user.uid, name: owner?'Ray':(cfg?.names?.[email]||user.email.split('@')[0]), email, org:true, owner};
+      }
+      if (S.me.org){ const c = await DB.get('cb_meta','config').catch(()=>null); if (!c?.seeded) await seedAll(); }
+      start();
+    }catch(e){ console.error(e); gate('Couldn\'t load the site. Check your connection and try again.'); }
+  });
+}
+async function seedAll(){
+  for (const p of SEED.posts) await DB.set('cb_posts', p.id, p);
+  for (const [i,d] of SEED.dates.entries()) await DB.set('cb_dates', 'd'+i, d);
+  for (const g of SEED.golf) await DB.set('cb_golf', g.id, g);
+  for (const p of SEED.people) await DB.set('cb_people', p.id, p);
+  await DB.set('cb_meta','info', SEED.info);
+  const prev = await DB.get('cb_meta','config').catch(()=>null);
+  await DB.set('cb_meta','config', {...(prev||{orgs:[], names:{}}), seeded:true});
+}
+let started=false;
+function start(){
+  if (started){ render(); return; } started=true;
+  DB.sub('cb_posts', v=>{ S.posts=v; render(); });
+  DB.sub('cb_comments', v=>{ S.comments=v; render(); });
+  DB.sub('cb_dates', v=>{ S.dates=v; render(); });
+  DB.sub('cb_golf', v=>{ S.golf=v; render(); });
+  DB.sub('cb_people', v=>{ S.people=v; render(); });
+  DB.sub('cb_photos', v=>{ S.photos=v; render(); });
+  DB.sub('cb_meta', v=>{ S.info=v.find(x=>x.id==='info'); S.paysum=v.find(x=>x.id==='paysum'); S.config=v.find(x=>x.id==='config'); render(); });
+  if (S.me.org) DB.sub('cb_pay', v=>{ S.pay=Object.fromEntries(v.map(x=>[x.id,x])); render(); });
+  addEventListener('hashchange', render);
+  render();
+}
+
+/* ---------- gate: passcode for guests, sign-in for organizers ---------- */
+function gate(note){
+  S.me=null;
+  $('#app').innerHTML = `<div class="gate"><div class="card">
+    <div class="tiny muted" style="letter-spacing:.18em">BLACK &amp; GOLD</div><h1>Capricorn Bash 2027</h1>
+    <p class="muted small">January 14–19, 2027 · Mission Resort + Club</p>
+    ${note?`<div class="msg err">${note}</div>`:''}
+    <label class="f" for="gName">Your name</label><input id="gName" autocomplete="name" placeholder="First and last name">
+    <label class="f" for="gCode">Group passcode</label><input id="gCode" autocomplete="off" autocapitalize="off" placeholder="From Kelleye or Ray">
+    <button class="btn" id="gGo" style="width:100%;margin-top:14px">Enter</button>
+    <div class="msg" id="gMsg" role="status"></div>
+    <details style="margin-top:16px"><summary class="small muted">Organizer sign-in</summary>
+      <label class="f" for="oEmail">Email</label><input id="oEmail" type="email" autocomplete="email">
+      <label class="f" for="oPass">Password</label><input id="oPass" type="password" autocomplete="current-password">
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="oGo">Sign in</button><button class="btn ghost sm" id="oNew">Create organizer account</button><button class="btn ghost sm" id="oReset">Forgot password</button></div>
+      <div class="tiny muted" style="margin-top:6px">Same account Ray uses for the Triple-G app works here.</div>
+    </details></div></div>`;
+}
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('#gGo,#oGo,#oNew,#oReset'); if (!b || !DB?.auth) return;
+  const {auth,A}=DB.auth, msg=$('#gMsg'); msg.className='msg';
+  try{
+    if (b.id==='gGo'){
+      const name=$('#gName').value.trim().replace(/\s+/g,' '), code=$('#gCode').value.trim();
+      if (!name || !code){ msg.className='msg err'; msg.textContent='Enter your name and the group passcode.'; return; }
+      b.disabled=true; msg.textContent='Checking…'; S.joining=true;
+      const cred = auth.currentUser?.isAnonymous ? {user:auth.currentUser} : await A.signInAnonymously(auth);
+      try{ await DB.set('cb_members', cred.user.uid, {name:name.slice(0,40), code, at:new Date().toISOString()}); }
+      catch(err){ S.joining=false; b.disabled=false; msg.className='msg err'; msg.textContent='That passcode isn\'t right. Check with Kelleye or Ray.'; return; }
+      S.joining=false; S.me={uid:cred.user.uid, name, org:false}; start();
+    } else {
+      const email=$('#oEmail').value.trim(), pass=$('#oPass').value;
+      if (b.id==='oReset'){ if (!email){ msg.className='msg err'; msg.textContent='Enter your email first.'; return; } await A.sendPasswordResetEmail(auth,email); msg.className='msg ok'; msg.textContent='Password reset email sent.'; return; }
+      if (!email || !pass){ msg.className='msg err'; msg.textContent='Enter your email and password.'; return; }
+      if (b.id==='oNew') await A.createUserWithEmailAndPassword(auth,email,pass); else await A.signInWithEmailAndPassword(auth,email,pass);
+    }
+  }catch(err){
+    const m={ 'auth/invalid-credential':'Wrong email or password.', 'auth/email-already-in-use':'That email already has an account. Use Sign in.', 'auth/weak-password':'Use at least 6 characters for the password.', 'auth/admin-restricted-operation':'Guest access isn\'t turned on yet. Ray needs to enable Anonymous sign-in in Firebase.', 'auth/operation-not-allowed':'This sign-in type isn\'t turned on in Firebase yet.' };
+    S.joining=false; msg.className='msg err'; msg.textContent = m[err.code] || err.message || 'Something went wrong.'; b.disabled=false;
+  }
+});
+
+/* ---------- derived ---------- */
+const posts = () => [...S.posts].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || D(b.at)-D(a.at));
+const tmin = t => { const m=String(t||'').match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i); if (!m) return -1; let h=+m[1]%12; if ((m[3]||'').toUpperCase()==='PM') h+=12; return h*60+ +m[2]; };
+const dates = () => [...S.dates].sort((a,b)=>a.date.localeCompare(b.date) || tmin(a.time)-tmin(b.time));
+const rounds = () => [...S.golf].sort((a,b)=>a.n-b.n);
+const guestsOf = p => (p.golfers||[]).length + (p.others||[]).length;
+const allGolfers = () => S.people.flatMap(p=>(p.golfers||[]).map(n=>({name:n, party:p})));
+const playsRound = (gf, r) => { const out=(r.out||[]); if (out.includes(gf.name)) return false; return (gf.party.nights||3) >= 5 ? true : r.n<=3; };
+const isMe = name => S.me && name && S.me.name && name.toLowerCase().split(' ')[0]===S.me.name.toLowerCase().split(' ')[0] && name.toLowerCase().split(' ').slice(-1)[0]===S.me.name.toLowerCase().split(' ').slice(-1)[0];
+const ORG = () => !!S.me?.org;
+
+/* ---------- views ---------- */
+function countdown(){
+  const ms = D('2027-01-14T15:00:00') - Date.now();
+  if (ms<=0) return D('2027-01-20') > new Date() ? '<div class="big">We\'re here! 🎉</div>' : '<div class="big">What a celebration!</div>';
+  const d=Math.floor(ms/864e5), h=Math.floor(ms/36e5)%24, m=Math.floor(ms/6e4)%60;
+  return `<div class="cd"><div><b>${d}</b><span>DAYS</span></div><div><b>${h}</b><span>HOURS</span></div><div><b>${m}</b><span>MIN</span></div></div>`;
+}
+function postHTML(p, full){
+  const cs = S.comments.filter(c=>c.post===p.id).sort((a,b)=>D(a.at)-D(b.at)), open = full || S.open[p.id];
+  return `<div class="post">${p.pinned?'<div class="pin">📌 PINNED</div>':''}
+  <div class="meta">${esc(p.by||'Organizer')} · ${ago(p.at)}</div>
+  ${p.title?`<h3 style="margin:2px 0 6px">${esc(p.title)}</h3>`:''}<div class="body">${esc(p.body)}</div>
+  <div class="row between" style="margin-top:8px"><button class="btn ghost sm" data-cmt="${p.id}">💬 ${cs.length?`${cs.length} comment${cs.length>1?'s':''}`:'Comment'}</button>
+  ${ORG()?`<span class="row"><button class="btn ghost sm" data-pedit="${p.id}">Edit</button></span>`:''}</div>
+  ${open?`<div>${cs.map(c=>`<div class="cm"><b>${esc(c.name)}</b> <span class="tiny muted">${ago(c.at)}</span>${(c.uid===S.me?.uid||ORG())?` <a href="#" class="tiny" data-cdel="${c.id}">delete</a>`:''}<div>${esc(c.text)}</div></div>`).join('')}
+    <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="c_${p.id}" placeholder="Write a comment" maxlength="500"><button class="btn sm" data-csend="${p.id}">Post</button></div></div>`:''}</div>`;
+}
+function datesHTML(list, compact){
+  const t=today();
+  return `<div class="tl">${list.map(d=>{ const past=d.date<t;
+    return `<div class="tli ${past?'past':''}"><div class="d"><span>${fmt(d.date,{month:'short'})}</span><b>${fmt(d.date,{day:'numeric'})}</b><span>${fmt(d.date,{weekday:'short'})}</span></div>
+    <div><div><b>${esc(d.title)}</b>${d.due&&!past?' <span class="due">DEADLINE</span>':''}</div>${d.time?`<div class="small muted">${esc(d.time)}</div>`:''}${d.note&&!compact?`<div class="small muted">${esc(d.note)}</div>`:''}
+    ${ORG()&&!compact?`<a href="#" class="tiny" data-dedit="${d.id}">edit</a>`:''}</div></div>`; }).join('')}</div>`;
+}
+const V = {};
+V.home = () => {
+  const t=today(), up=dates().filter(d=>d.date>=t).slice(0,3), ps=posts().slice(0,2), ps2=S.paysum;
+  const ball = '2027-01-16';
+  return `<main>
+  <section class="hero"><div class="k">BLACK &amp; GOLD</div><div class="big">Capricorn Birthday Bash</div>
+  <div class="small muted">January 14–19, 2027 · Mission Resort + Club</div>${countdown()}
+  <div class="small" style="margin-top:12px">Sneaker Ball · Sat, Jan 16 · 7–11 PM</div></section>
+  ${ORG()?`<div class="orgbar">Signed in as organizer (${esc(S.me.name)}). <a href="#admin">Organizer tools</a></div>`:''}
+  <section class="card"><div class="row between"><h2>Latest</h2><a href="#updates" class="small">All updates</a></div>${ps.map(p=>postHTML(p)).join('')||'<div class="muted">No updates yet.</div>'}</section>
+  <section class="card"><div class="row between"><h2>Coming up</h2><a href="#dates" class="small">Full timeline</a></div>${up.length?datesHTML(up,true):'<div class="muted">Nothing coming up.</div>'}</section>
+  ${ps2&&ps2.guests?`<section class="card"><h2>Buffet &amp; bar payments</h2><div class="small" style="margin-bottom:6px">${ps2.paid} of ${ps2.guests} guests paid · due Nov 15</div><div class="bar"><i style="width:${Math.round(ps2.paid/ps2.guests*100)}%"></i></div></section>`:''}
+  <section class="card"><div class="row between"><h2>Photos</h2><a href="#photos" class="small">See all</a></div>${S.photos.length?`<div class="photos">${[...S.photos].sort((a,b)=>D(b.at)-D(a.at)).slice(0,6).map(ph=>`<img src="${ph.thumb}" alt="${esc(ph.caption||'Photo')}" data-ph="${ph.id}">`).join('')}</div>`:'<div class="muted small">No photos yet. Be the first to share one!</div>'}</section>
+  </main>`;
+};
+V.updates = () => `<main><div class="row between"><h1>Updates</h1>${ORG()?'<button class="btn sm" id="pNew">New update</button>':''}</div>
+  <section class="card">${posts().map(p=>postHTML(p)).join('')||'<div class="muted">No updates yet.</div>'}</section></main>`;
+V.dates = () => `<main><div class="row between"><h1>Timeline</h1>${ORG()?'<button class="btn sm" id="dNew">Add date</button>':''}</div>
+  <section class="card">${datesHTML(dates())}</section></main>`;
+V.golf = () => {
+  const gs=allGolfers();
+  return `<main><h1>Golf</h1><div class="muted small">${gs.length} golfers · Mission Resort + Club</div>
+  ${rounds().map(r=>{ const tees=[]; for (let t=r.first; t<=r.last; t=addMin(t,r.gap||8)) tees.push(t);
+    const playing=gs.filter(g=>playsRound(g,r)).length, shown=r.show||ORG();
+    return `<section class="card"><div class="row between"><h2 style="margin:0">Round ${r.n} · ${esc(r.course)}</h2>${ORG()?`<a class="btn ghost sm" href="#pair/${r.id}">Pairings</a>`:''}</div>
+    <div class="small muted">${fmt(r.date,{weekday:'long',month:'long',day:'numeric'})} · ${t12(r.first)}–${t12(r.last)} · ${tees.length} tee times · ${playing} playing</div>
+    ${r.groups?.length && shown ? r.groups.map((g,i)=>`<div class="grp ${g.some(isMe)?'me':''}"><div class="t">${t12(tees[i]||addMin(r.first,(r.gap||8)*i))}${g.some(isMe)?' · your group':''}</div>${g.map(n=>`<span class="chip ${isMe(n)?'gold':''}">${esc(n)}</span>`).join('')}</div>`).join('')
+      + (!r.show?'<div class="tiny muted" style="margin-top:6px">Draft — only organizers can see these pairings until you tap Publish.</div>':'')
+      : '<div class="small muted" style="margin-top:8px">Pairings coming soon.</div>'}</section>`; }).join('')}
+  </main>`;
+};
+V.pair = (rid) => {
+  if (!ORG()) return V.golf();
+  const r=S.golf.find(x=>x.id===rid); if (!r) return V.golf();
+  const gs=allGolfers(), groups=S.edit?.id===rid ? S.edit.groups : (r.groups||[]).map(g=>[...g]);
+  if (!S.edit || S.edit.id!==rid) S.edit={id:rid, groups, out:[...(r.out||[])]};
+  const E=S.edit, placed=new Set(E.groups.flat()), avail=gs.filter(g=>!E.out.includes(g.name) && ((g.party.nights||3)>=5 || r.n<=3)).map(g=>g.name);
+  const waiting=avail.filter(n=>!placed.has(n));
+  const opt=(cur)=>E.groups.map((_,i)=>`<option value="${i}" ${i===cur?'selected':''}>Group ${i+1}</option>`).join('')+'<option value="x">Remove</option>';
+  return `<main><a href="#golf" class="small">← Golf</a><h1>Round ${r.n} pairings</h1><div class="small muted">${esc(r.course)} · ${fmt(r.date,{weekday:'short',month:'short',day:'numeric'})} · ${avail.length} golfers</div>
+  <section class="card"><div class="row"><button class="btn sm" data-gen="rand">Make groups (random)</button><button class="btn ghost sm" data-gen="party">Keep couples together</button></div>
+  <div class="tiny muted" style="margin-top:6px">Groups of 4 (some 3s), one per tee time. Move anyone with the menu next to their name.</div></section>
+  ${E.groups.map((g,i)=>`<section class="card"><b>Group ${i+1} · ${t12(addMin(r.first,(r.gap||8)*i))}</b>${g.map(n=>`<div class="li"><span>${esc(n)}</span><select data-mv="${i}|${esc(n)}" style="width:auto">${opt(i)}</select></div>`).join('')||'<div class="muted small">Empty</div>'}</section>`).join('')}
+  ${waiting.length?`<section class="card"><b>Not in a group yet</b>${waiting.map(n=>`<div class="li"><span>${esc(n)}</span><select data-add="${esc(n)}" style="width:auto"><option value="">Add to…</option>${E.groups.map((_,i)=>`<option value="${i}">Group ${i+1}</option>`).join('')}<option value="new">New group</option><option value="out">Not playing this round</option></select></div>`).join('')}</section>`:''}
+  ${E.out.length?`<section class="card"><b>Not playing this round</b><div>${E.out.map(n=>`<span class="chip">${esc(n)} <a href="#" data-unout="${esc(n)}">undo</a></span>`).join('')}</div></section>`:''}
+  <section class="card"><div class="row"><button class="btn" data-psave="draft">Save draft</button><button class="btn" data-psave="pub">Publish to everyone</button></div>
+  <div class="tiny muted" style="margin-top:6px">${r.show?'Currently published.':'Currently hidden from guests.'}</div><div class="msg" id="pMsg" role="status"></div></section></main>`;
+};
+V.event = () => {
+  const rows=(S.info?.rows)||SEED.info.rows, tg=S.people.reduce((a,p)=>a+guestsOf(p),0), golfers=allGolfers().length;
+  return `<main><h1>Event details</h1>
+  <section class="card">${rows.map(([k,v])=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div class="tiny muted">${esc(k)}</div><div>${linkify(esc(v))}</div></div>`).join('').replace('border-top:1px solid var(--line)','border-top:0')}
+  ${ORG()?'<button class="btn ghost sm" id="iEdit" style="margin-top:8px">Edit details</button>':''}</section>
+  <section class="card"><div class="row between"><h2 style="margin:0">Who's coming</h2>${ORG()?'<button class="btn ghost sm" id="peNew">Add party</button>':''}</div>
+  <div class="small muted" style="margin:4px 0 8px">${tg} guests · ${golfers} golfers · ${S.people.length} rooms</div>
+  <table><thead><tr><th>Party</th><th>Room</th><th>Nights</th></tr></thead><tbody>
+  ${[...S.people].sort((a,b)=>a.party.localeCompare(b.party)).map(p=>`<tr><td>${esc(p.party)}${(p.others||[]).length?`<div class="tiny muted">Non-golfer: ${esc(p.others.join(', '))}</div>`:''}${ORG()?` <a href="#" class="tiny" data-peedit="${p.id}">edit</a>`:''}</td><td>${esc(p.room)}</td><td>${esc(p.nights)}</td></tr>`).join('')}</tbody></table></section>
+  </main>`;
+};
+const linkify = s => s.replace(/(\d{3})-(\d{3})-(\d{4})/g, (m)=>`<a href="tel:${m.replace(/-/g,'')}">${m}</a>`);
+V.photos = () => `<main><div class="row between"><h1>Photos</h1><label class="btn sm" for="phFile">Add photos</label></div>
+  <input type="file" id="phFile" accept="image/*" multiple class="sr">
+  <div class="msg" id="phMsg" role="status"></div>
+  <section class="card">${S.photos.length?`<div class="photos">${[...S.photos].sort((a,b)=>D(b.at)-D(a.at)).map(ph=>`<img src="${ph.thumb}" alt="${esc(ph.caption||'Photo by '+ph.name)}" data-ph="${ph.id}" loading="lazy">`).join('')}</div>`:'<div class="muted">No photos yet. Tap Add photos to share yours from the planning, the course or the Ball.</div>'}</section></main>`;
+V.admin = () => {
+  if (!ORG()) return V.home();
+  const t = S.people.reduce((a,p)=>a+guestsOf(p),0);
+  const paid = S.people.reduce((a,p)=>a+(S.pay[p.id]?.guests||0),0);
+  return `<main><h1>Organizer tools</h1>
+  <section class="card"><h2>Buffet &amp; bar tracker</h2><div class="small muted">${paid} of ${t} guests paid · ${money(paid*PP)} of ${money(t*PP)}</div><div class="bar" style="margin:8px 0"><i style="width:${t?Math.round(paid/t*100):0}%"></i></div>
+  ${[...S.people].sort((a,b)=>a.party.localeCompare(b.party)).map(p=>{ const g=guestsOf(p), pd=S.pay[p.id]?.guests||0;
+    return `<div class="li"><span>${esc(p.party)}<div class="tiny muted">${g} guest${g>1?'s':''} · ${money(g*PP)}</div></span><select data-pay="${p.id}" style="width:auto">${Array.from({length:g+1},(_,i)=>`<option value="${i}" ${i===pd?'selected':''}>${i===0?'Not paid':i===g?'Paid ✓':`${i} of ${g} paid`}</option>`).join('')}</select></div>`; }).join('')}
+  <div class="tiny muted" style="margin-top:6px">Guests only see the totals (how many have paid), never names.</div></section>
+  <section class="card"><h2>Import guest list &amp; details</h2><div class="small muted">Paste the starter text Ray has (one party per line). Re-importing replaces the guest list; payment marks are kept.</div>
+  <textarea id="impText" placeholder="Ray & Kelleye Elmore | Ray Elmore, Kelleye Elmore | | DBL | 5"></textarea>
+  <div class="row" style="margin-top:8px"><button class="btn sm" id="impGo">Import</button></div><div class="msg" id="impMsg" role="status"></div></section>
+  ${S.me.owner?`<section class="card"><h2>Group passcode</h2><div class="small muted">Share this with the group so they can get in. Changing it doesn't sign out people who are already in.</div>
+  <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="pcNew" placeholder="New passcode" autocomplete="off"><button class="btn sm" id="pcSave">Save</button></div><div class="msg" id="pcMsg" role="status"></div></section>
+  <section class="card"><h2>Organizers</h2><div class="small muted">These emails can post updates, edit dates, make pairings and see the payment tracker.</div>
+  <div style="margin:6px 0">${OWNERS.map(e=>`<span class="chip gold">${esc(e)}</span>`).join('')}${(S.config?.orgs||[]).map(e=>`<span class="chip">${esc(e)} <a href="#" data-orgdel="${esc(e)}">remove</a></span>`).join('')}</div>
+  <div class="row" style="flex-wrap:nowrap"><input id="orgEmail" type="email" placeholder="kelleye@example.com"><input id="orgName" placeholder="Name" style="max-width:120px"><button class="btn sm" id="orgAdd">Add</button></div><div class="msg" id="orgMsg" role="status"></div></section>`:''}
+  <section class="card"><button class="btn ghost sm" id="signOut">Sign out</button></section></main>`;
+};
+
+/* ---------- render ---------- */
+function render(){
+  if (!S.me) return;
+  const [r,arg] = (location.hash.slice(1)||'home').split('/'); S.route = V[r] ? r : 'home';
+  const focus=document.activeElement, fid=focus?.id, val=focus?.value, sel=[focus?.selectionStart,focus?.selectionEnd];
+  const keep={}; document.querySelectorAll('input[id^="c_"],#pcNew,#orgEmail,#orgName').forEach(i=>keep[i.id]=i.value);
+  const tab = (h,ic,l) => `<a href="#${h}" class="${S.route===h||(h==='golf'&&S.route==='pair')||(h==='updates'&&S.route==='dates')?'on':''}"><b>${ic}</b>${l}</a>`;
+  $('#app').innerHTML = V[S.route](arg) + `<nav class="tabs">${tab('home','⌂','Home')}${tab('updates','📣','Updates')}${tab('golf','⛳','Golf')}${tab('event','🎉','Event')}${tab('photos','📷','Photos')}</nav>`;
+  Object.entries(keep).forEach(([k,v])=>{ const el=document.getElementById(k); if (el) el.value=v; });
+  if (fid){ const el=document.getElementById(fid); if (el){ el.focus(); try{ el.setSelectionRange(...sel); }catch(e){} } }
+}
+setInterval(()=>{ if (S.route==='home' && !document.activeElement?.matches('input,textarea')) render(); }, 60000);
+
+/* ---------- modal forms ---------- */
+function modal(html){ $('#modal').innerHTML = html ? `<div class="modal" role="dialog" aria-modal="true"><div class="card">${html}</div></div>` : ''; }
+document.addEventListener('click', e=>{ if (e.target.classList?.contains('modal')) modal(''); if (e.target.closest('[data-close]')) modal(''); });
+function postForm(p){
+  modal(`<h2>${p?'Edit update':'New update'}</h2>
+  <label class="f" for="fTitle">Title</label><input id="fTitle" value="${esc(p?.title||'')}" maxlength="120">
+  <label class="f" for="fBody">Message</label><textarea id="fBody" maxlength="4000">${esc(p?.body||'')}</textarea>
+  <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="fPin" style="width:auto" ${p?.pinned?'checked':''}> Pin to the top</label>
+  <div class="row" style="margin-top:14px"><button class="btn" data-psv="${p?.id||''}">${p?'Save':'Post update'}</button><button class="btn ghost" data-close>Cancel</button>${p?`<button class="btn danger" data-pdel="${p.id}">Delete</button>`:''}</div><div class="msg" id="fMsg"></div>`);
+}
+function dateForm(d){
+  modal(`<h2>${d?'Edit date':'Add date'}</h2>
+  <label class="f" for="fDate">Date</label><input id="fDate" type="date" value="${esc(d?.date||'')}">
+  <label class="f" for="fTime">Time (optional)</label><input id="fTime" value="${esc(d?.time||'')}" placeholder="7:00 PM">
+  <label class="f" for="fDT">What's happening</label><input id="fDT" value="${esc(d?.title||'')}" maxlength="120">
+  <label class="f" for="fNote">Details (optional)</label><textarea id="fNote" style="min-height:70px">${esc(d?.note||'')}</textarea>
+  <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="fDue" style="width:auto" ${d?.due?'checked':''}> Mark as a deadline</label>
+  <div class="row" style="margin-top:14px"><button class="btn" data-dsv="${d?.id||''}">Save</button><button class="btn ghost" data-close>Cancel</button>${d?`<button class="btn danger" data-ddel="${d.id}">Delete</button>`:''}</div><div class="msg" id="fMsg"></div>`);
+}
+function partyForm(p){
+  modal(`<h2>${p?'Edit party':'Add party'}</h2>
+  <label class="f" for="fParty">Party name</label><input id="fParty" value="${esc(p?.party||'')}" placeholder="John & Nicole Willis">
+  <label class="f" for="fG">Golfers (one per line)</label><textarea id="fG" style="min-height:70px">${esc((p?.golfers||[]).join('\n'))}</textarea>
+  <label class="f" for="fO">Non-golfers (one per line)</label><textarea id="fO" style="min-height:50px">${esc((p?.others||[]).join('\n'))}</textarea>
+  <div class="row"><div style="flex:1"><label class="f" for="fRoom">Room</label><select id="fRoom"><option ${p?.room!=='SGL'?'selected':''}>DBL</option><option ${p?.room==='SGL'?'selected':''}>SGL</option></select></div>
+  <div style="flex:1"><label class="f" for="fN">Nights</label><select id="fN">${[3,4,5].map(n=>`<option ${+(p?.nights||3)===n?'selected':''}>${n}</option>`).join('')}</select></div></div>
+  <div class="tiny muted" style="margin-top:6px">5-night golfers are paired for all 4 rounds; others for rounds 1–3.</div>
+  <div class="row" style="margin-top:14px"><button class="btn" data-pesv="${p?.id||''}">Save</button><button class="btn ghost" data-close>Cancel</button>${p?`<button class="btn danger" data-pedel="${p.id}">Remove</button>`:''}</div><div class="msg" id="fMsg"></div>`);
+}
+function infoForm(){
+  const rows=(S.info?.rows)||SEED.info.rows;
+  modal(`<h2>Edit event details</h2><div class="small muted">One item per line: <b>Label: details</b></div>
+  <textarea id="fInfo" style="min-height:300px">${esc(rows.map(([k,v])=>`${k}: ${v}`).join('\n'))}</textarea>
+  <div class="row" style="margin-top:14px"><button class="btn" id="iSave">Save</button><button class="btn ghost" data-close>Cancel</button></div><div class="msg" id="fMsg"></div>`);
+}
+async function writePaySum(){
+  const t=S.people.reduce((a,p)=>a+guestsOf(p),0), paid=S.people.reduce((a,p)=>a+(S.pay[p.id]?.guests||0),0);
+  await DB.set('cb_meta','paysum',{guests:t, paid, at:new Date().toISOString()});
+}
+
+/* ---------- photo upload: shrink on the phone, store in the database ---------- */
+function shrink(file, max, q){ return new Promise((res,rej)=>{ const img=new Image(), url=URL.createObjectURL(file);
+  img.onload=()=>{ const s=Math.min(1, max/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', q)); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('Not an image')); }; img.src=url; }); }
+document.addEventListener('change', async e=>{
+  const t=e.target;
+  if (t.id==='phFile'){
+    const files=[...t.files], m=$('#phMsg'); let ok=0;
+    for (const [i,f] of files.entries()){
+      m.className='msg'; m.textContent=`Uploading ${i+1} of ${files.length}…`;
+      try{
+        let full=await shrink(f,1600,.8); if (full.length>850000) full=await shrink(f,1200,.7);
+        const thumb=await shrink(f,360,.7), id=uid();
+        await DB.set('cb_photofull', id, {data:full, uid:S.me.uid});
+        await DB.set('cb_photos', id, {thumb, uid:S.me.uid, name:S.me.name, caption:'', at:new Date().toISOString()});
+        ok++;
+      }catch(err){ console.warn(err); }
+    }
+    m.className = ok===files.length?'msg ok':'msg err'; m.textContent = ok===files.length ? `${ok} photo${ok>1?'s':''} added.` : `${ok} of ${files.length} uploaded. Try the rest again.`;
+    t.value='';
+  }
+  else if (t.dataset.pay){ await DB.set('cb_pay', t.dataset.pay, {guests:+t.value, at:new Date().toISOString(), by:S.me.name}); S.pay[t.dataset.pay]={guests:+t.value}; await writePaySum(); }
+  else if (t.dataset.mv){ const [i,n]=t.dataset.mv.split('|'), E=S.edit; E.groups[+i]=E.groups[+i].filter(x=>x!==n); if (t.value!=='x') E.groups[+t.value].push(n); E.groups=E.groups.filter(g=>g.length); render(); }
+  else if (t.dataset.add){ const n=t.dataset.add, E=S.edit; if (t.value==='new') E.groups.push([n]); else if (t.value==='out') E.out.push(n); else if (t.value!=='') E.groups[+t.value].push(n); render(); }
+});
+
+/* ---------- actions ---------- */
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('button,a[data-cdel],a[data-dedit],a[data-peedit],a[data-unout],a[data-orgdel],img[data-ph]'); if (!b || !S.me) return;
+  const ds=b.dataset, fm=()=>$('#fMsg');
+  try{
+    if (ds.cmt!==undefined && ds.cmt){ S.open[ds.cmt]=!S.open[ds.cmt]; render(); }
+    else if (ds.csend){ const i=$('#c_'+ds.csend), txt=i.value.trim(); if (!txt) return; b.disabled=true; await DB.set('cb_comments', uid(), {post:ds.csend, text:txt.slice(0,500), name:S.me.name, uid:S.me.uid, at:new Date().toISOString()}); i.value=''; }
+    else if (ds.cdel){ e.preventDefault(); if (confirmDel('this comment')) await DB.del('cb_comments', ds.cdel); }
+    else if (b.id==='pNew') postForm();
+    else if (ds.pedit) postForm(S.posts.find(p=>p.id===ds.pedit));
+    else if (ds.psv!==undefined){ const title=$('#fTitle').value.trim(), body=$('#fBody').value.trim(); if (!body){ fm().className='msg err'; fm().textContent='Write a message first.'; return; }
+      const old=S.posts.find(p=>p.id===ds.psv); await DB.set('cb_posts', ds.psv||uid(), {title, body, pinned:$('#fPin').checked, by: old?.by || S.me.name, at: old?.at || new Date().toISOString(), edited: old?new Date().toISOString():null}); modal(''); }
+    else if (ds.pdel){ if (confirmDel('this update')){ await DB.del('cb_posts', ds.pdel); modal(''); } }
+    else if (b.id==='dNew') dateForm();
+    else if (ds.dedit){ e.preventDefault(); dateForm(S.dates.find(d=>d.id===ds.dedit)); }
+    else if (ds.dsv!==undefined){ const date=$('#fDate').value, title=$('#fDT').value.trim(); if (!date||!title){ fm().className='msg err'; fm().textContent='Add a date and what\'s happening.'; return; }
+      await DB.set('cb_dates', ds.dsv||uid(), {date, time:$('#fTime').value.trim(), title, note:$('#fNote').value.trim(), due:$('#fDue').checked}); modal(''); }
+    else if (ds.ddel){ if (confirmDel('this date')){ await DB.del('cb_dates', ds.ddel); modal(''); } }
+    else if (b.id==='peNew') partyForm();
+    else if (ds.peedit){ e.preventDefault(); partyForm(S.people.find(p=>p.id===ds.peedit)); }
+    else if (ds.pesv!==undefined){ const party=$('#fParty').value.trim(), lines=s=>s.split('\n').map(x=>x.trim()).filter(Boolean); if (!party){ fm().className='msg err'; fm().textContent='Give the party a name.'; return; }
+      await DB.set('cb_people', ds.pesv||uid(), {party, golfers:lines($('#fG').value), others:lines($('#fO').value), room:$('#fRoom').value, nights:+$('#fN').value}); modal(''); await writePaySum(); }
+    else if (ds.pedel){ if (confirmDel('this party')){ await DB.del('cb_people', ds.pedel); modal(''); await writePaySum(); } }
+    else if (b.id==='iEdit') infoForm();
+    else if (b.id==='iSave'){ const rows=$('#fInfo').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const i=l.indexOf(':'); return i>0?[l.slice(0,i).trim(), l.slice(i+1).trim()]:['',l]; }); await DB.set('cb_meta','info',{rows}); modal(''); }
+    else if (ds.gen){ const r=S.golf.find(x=>x.id===S.edit.id), E=S.edit;
+      const names=allGolfers().filter(g=>!E.out.includes(g.name) && ((g.party.nights||3)>=5 || r.n<=3));
+      let units = ds.gen==='party' ? Object.values(names.reduce((m,g)=>((m[g.party.id]=m[g.party.id]||[]).push(g.name),m),{})) : names.map(g=>[g.name]);
+      units = units.map(u=>[Math.random(),u]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+      const n=names.length, ng=Math.max(1,Math.ceil(n/4)), groups=Array.from({length:ng},()=>[]);
+      const sizes=Array.from({length:ng},(_,i)=> i < n - 3*ng ? 4 : 3);
+      units.sort((a,b)=>b.length-a.length).forEach(u=>{ let gi=groups.findIndex((g,i)=>g.length+u.length<=sizes[i]); if (gi<0) gi=groups.reduce((bi,g,i)=>g.length<groups[bi].length?i:bi,0); groups[gi].push(...u); });
+      E.groups=groups.map(g=>g.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1])).sort(()=>Math.random()-.5); render(); }
+    else if (ds.unout){ e.preventDefault(); S.edit.out=S.edit.out.filter(x=>x!==ds.unout); render(); }
+    else if (ds.psave){ const r=S.golf.find(x=>x.id===S.edit.id); await DB.set('cb_golf', r.id, {...r, groups:S.edit.groups.map(g=>[...g]), out:[...S.edit.out], show: ds.psave==='pub' ? true : !!r.show}); const m=$('#pMsg'); m.className='msg ok'; m.textContent= ds.psave==='pub'?'Published — everyone can see these pairings on the Golf tab.':'Draft saved.'; }
+    else if (ds.ph){ const ph=S.photos.find(x=>x.id===ds.ph); modal(`<img class="full" src="${ph.thumb}" id="phBig" alt=""><div class="row between" style="margin-top:8px"><span class="small muted">${esc(ph.name)} · ${ago(ph.at)}</span><span class="row">${(ph.uid===S.me.uid||ORG())?`<button class="btn danger sm" data-phdel="${ph.id}">Delete</button>`:''}<button class="btn ghost sm" data-close>Close</button></span></div>`);
+      const full=await DB.get('cb_photofull', ph.id).catch(()=>null); if (full && $('#phBig')) $('#phBig').src=full.data; }
+    else if (ds.phdel){ if (confirmDel('this photo')){ await DB.del('cb_photos', ds.phdel); await DB.del('cb_photofull', ds.phdel).catch(()=>{}); modal(''); } }
+    else if (b.id==='pcSave'){ const v=$('#pcNew').value.trim(), m=$('#pcMsg'); if (v.length<4){ m.className='msg err'; m.textContent='Use at least 4 characters.'; return; } await DB.set('cb_secret','access',{code:v, at:new Date().toISOString()}); m.className='msg ok'; m.textContent=`Passcode set to "${v}". Share it with the group.`; $('#pcNew').value=''; }
+    else if (b.id==='orgAdd'){ const em=$('#orgEmail').value.trim().toLowerCase(), nm=$('#orgName').value.trim(), m=$('#orgMsg'); if (!/^\S+@\S+\.\S+$/.test(em)){ m.className='msg err'; m.textContent='Enter a valid email.'; return; }
+      const c=S.config||{}; await DB.set('cb_meta','config',{...c, orgs:[...new Set([...(c.orgs||[]), em])], names:{...(c.names||{}), [em]:nm||em.split('@')[0]}}); m.className='msg ok'; m.textContent=`${em} can now sign in as an organizer (they tap "Create organizer account" the first time).`; }
+    else if (ds.orgdel){ e.preventDefault(); const c=S.config||{}; await DB.set('cb_meta','config',{...c, orgs:(c.orgs||[]).filter(x=>x!==ds.orgdel)}); }
+    else if (b.id==='impGo'){ const m=$('#impMsg'), lines=$('#impText').value.split('\n').map(l=>l.trim()).filter(Boolean); let np=0, ni=0; const rows=[...((S.info?.rows)||SEED.info.rows)].map(r=>[...r]); const parties=[];
+      for (const l of lines){ const f=l.split('|').map(x=>x.trim());
+        if (f[0].toLowerCase()==='info' && f.length>=3){ const i=rows.findIndex(r=>r[0].toLowerCase()===f[1].toLowerCase()); if (i>=0) rows[i]=[f[1],f.slice(2).join(' | ')]; else rows.push([f[1],f.slice(2).join(' | ')]); ni++; }
+        else if (f.length>=5){ const list=s=>s.split(',').map(x=>x.trim()).filter(Boolean); parties.push({party:f[0], golfers:list(f[1]), others:list(f[2]), room:/sgl/i.test(f[3])?'SGL':'DBL', nights:+f[4]||3}); }
+      }
+      if (!parties.length && !ni){ m.className='msg err'; m.textContent='Nothing to import. Check the format: Party | golfers | non-golfers | DBL or SGL | nights'; return; }
+      if (parties.length){ for (const p of S.people) if (!parties.some(q=>q.party===p.party)) await DB.del('cb_people', p.id);
+        for (const q of parties){ const ex=S.people.find(p=>p.party===q.party); await DB.set('cb_people', ex?.id || q.party.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40), q); np++; } }
+      if (ni) await DB.set('cb_meta','info',{rows});
+      await writePaySum(); m.className='msg ok'; m.textContent=`Imported ${np} parties${ni?` and ${ni} detail line${ni>1?'s':''}`:''}.`; $('#impText').value=''; }
+    else if (b.id==='signOut'){ if (DB.auth) await DB.auth.A.signOut(DB.auth.auth); location.hash=''; location.reload(); }
+  }catch(err){ console.error(err); const m=fm()||$('#pMsg')||$('#phMsg'); if (m){ m.className='msg err'; m.textContent='That didn\'t save. Check your connection and try again.'; } }
+});
+const confirmDel = what => window.confirm(`Delete ${what}?`);
+
+if (DEMO) window.S = S;
+(DEMO ? initDemo : initFirebase)().catch(e=>{ console.error(e); $('#app').innerHTML='<div class="gate"><div class="card"><h1>Capricorn Bash</h1><p>Couldn\'t load. Check your connection and reload.</p></div></div>'; });
+</script>
+</body>
+</html>
