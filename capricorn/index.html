@@ -151,19 +151,23 @@ async function initFirebase(){
     try{
       if (user.isAnonymous){
         if (S.joining) return;   // passcode entry in progress; the Enter button finishes sign-in
-        const m = await DB.get('cb_members', user.uid);
+        S.loadStep='checking your guest pass'; const m = await DB.get('cb_members', user.uid);
         if (!m){ gate(); return; }
         S.me = {uid:user.uid, name:m.name, org:false};
       } else {
         const email=(user.email||'').toLowerCase(); let cfg=null;
-        try{ cfg = await DB.get('cb_meta','config'); }catch(e){}
+        S.loadStep='reading the organizer list'; try{ cfg = await DB.get('cb_meta','config'); }catch(e){}
         const owner = OWNERS.includes(email), org = owner || (cfg?.orgs||[]).includes(email);
         if (!org){ gate(`${esc(user.email)} isn't on the organizer list. Ask Ray to add you, or use the group passcode instead.`); await A.signOut(auth); return; }
         S.me = {uid:user.uid, name: owner?'Ray':(cfg?.names?.[email]||user.email.split('@')[0]), email, org:true, owner};
       }
-      if (S.me.org){ const c = await DB.get('cb_meta','config').catch(()=>null); if (!c?.seeded) await seedAll(); }
+      if (S.me.org){ const c = await DB.get('cb_meta','config').catch(()=>null); S.loadStep='loading the starter info'; if (!c?.seeded) await seedAll(); }
       start();
-    }catch(e){ console.error(e); gate('Couldn\'t load the site. Check your connection and try again.'); }
+    }catch(e){ console.error(e);
+      const why = e?.code==='permission-denied' || /permission/i.test(e?.message||'')
+        ? `The database said "no" (${S.loadStep||'loading'}). The Capricorn rules may not be published yet, or were pasted in the wrong place — see Step 2 of the setup steps.`
+        : `Couldn't load the site (${esc(e?.code||e?.message||'unknown error')} while ${S.loadStep||'loading'}). Check your connection and try again.`;
+      gate(why); }
   });
 }
 async function seedAll(){
