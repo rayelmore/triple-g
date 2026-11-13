@@ -116,15 +116,26 @@ const ago = s => { const m=Math.round((Date.now()-D(s))/60000); if (m<1) return 
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ---------- data layer: Firebase or in-memory demo ---------- */
+// Firestore can't store a list inside a list, so event-detail rows and pairing groups are saved as objects.
+const pack = (col, data) => {
+  if (col==='cb_meta' && Array.isArray(data.rows)) return {...data, rows: data.rows.map(r=>Array.isArray(r)?{k:r[0], v:r[1]}:r)};
+  if (col==='cb_golf' && Array.isArray(data.groups)) return {...data, groups: data.groups.map(g=>Array.isArray(g)?{p:g}:g)};
+  return data;
+};
+const unpack = (col, data) => {
+  if (col==='cb_meta' && Array.isArray(data.rows)) return {...data, rows: data.rows.map(r=>Array.isArray(r)?r:[r.k, r.v])};
+  if (col==='cb_golf' && Array.isArray(data.groups)) return {...data, groups: data.groups.map(g=>Array.isArray(g)?g:(g.p||[]))};
+  return data;
+};
 const S = { posts:[], comments:[], dates:[], golf:[], people:[], pay:{}, info:null, paysum:null, config:null, photos:[], me:null, route:'home', open:{} };
 let DB;
 async function initDemo(){
   const mem = {}; const subs = {};
-  const fire = col => (subs[col]||[]).forEach(cb=>cb(Object.values(mem[col]||{})));
+  const fire = col => (subs[col]||[]).forEach(cb=>cb(Object.values(mem[col]||{}).map(x=>unpack(col,x))));
   DB = {
-    sub:(col,cb)=>{ (subs[col]=subs[col]||[]).push(cb); setTimeout(()=>cb(Object.values(mem[col]||{})),0); },
-    get:async(col,id)=> (mem[col]||{})[id] || null,
-    set:async(col,id,data)=>{ (mem[col]=mem[col]||{})[id]={...data,id}; fire(col); },
+    sub:(col,cb)=>{ (subs[col]=subs[col]||[]).push(cb); setTimeout(()=>cb(Object.values(mem[col]||{}).map(x=>unpack(col,x))),0); },
+    get:async(col,id)=> (mem[col]||{})[id] ? unpack(col,(mem[col])[id]) : null,
+    set:async(col,id,data)=>{ const d=pack(col,data); if (JSON.stringify(d).match(/\[\s*\[/)) throw Object.assign(new Error('nested list'),{code:'invalid-argument'}); (mem[col]=mem[col]||{})[id]={...d,id}; fire(col); },
     del:async(col,id)=>{ delete (mem[col]||{})[id]; fire(col); }
   };
   S.me = {uid:'demo', name:'Demo Organizer', org:true, owner:true};
@@ -140,9 +151,9 @@ async function initFirebase(){
     storageBucket:"triple-g-de71a.firebasestorage.app", messagingSenderId:"647959305551", appId:"1:647959305551:web:c8de2ccca94cd7f745b93a" }, 'capricorn');
   const fs = F.initializeFirestore(app, { ignoreUndefinedProperties:true }), auth = A.getAuth(app);
   DB = {
-    sub:(col,cb)=>F.onSnapshot(F.collection(fs,col), s=>cb(s.docs.map(d=>({...d.data(), id:d.id}))), e=>{ console.warn(col,e.code); cb([]); }),
-    get:async(col,id)=>{ const d=await F.getDoc(F.doc(fs,col,id)); return d.exists()?{...d.data(),id:d.id}:null; },
-    set:(col,id,data)=>F.setDoc(F.doc(fs,col,id), data),
+    sub:(col,cb)=>F.onSnapshot(F.collection(fs,col), s=>cb(s.docs.map(d=>unpack(col,{...d.data(), id:d.id}))), e=>{ console.warn(col,e.code); cb([]); }),
+    get:async(col,id)=>{ const d=await F.getDoc(F.doc(fs,col,id)); return d.exists()?unpack(col,{...d.data(),id:d.id}):null; },
+    set:(col,id,data)=>F.setDoc(F.doc(fs,col,id), pack(col,data)),
     del:(col,id)=>F.deleteDoc(F.doc(fs,col,id))
   };
   DB.auth = { auth, A };
