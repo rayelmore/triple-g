@@ -479,7 +479,7 @@ function homePairings(nr){
   ${P.groups.map((g,i)=>`<div class="li" style="grid-template-columns:82px 1fr"><b>${teeAt(P.base||nr.time,i,P.interval||8)}</b><span>${g.map(id=>esc(pname(id))).join(', ')}</span></div>`).join('')}</section>`;
 }
 V.home = () => {
-  const nr = nextRound(), pend = pendingRound(), R = ROSTER(), rounds = allRounds(), last = rounds[rounds.length-1];
+  const nr = nextRound(), R = ROSTER(), rounds = allRounds(), last = rounds[rounds.length-1];
   const inIds = Object.keys(S.checkins);
   const playing = R.filter(p=>inIds.includes(p.id));
   const yr = new Date().getMonth() >= 9 ? 2027 : 2026; // dues for next year open in the fall
@@ -494,7 +494,6 @@ V.home = () => {
   </div></section>
   <main>
     ${nr && nr.date===todayISO() && Object.keys(S.live[nr.date]||{}).length ? `<a class="banner good" href="#leaderboard" style="display:block;color:inherit;text-decoration:none"><span class="livepill">LIVE</span> Round in progress · ${Object.keys(S.live[nr.date]).length} players scoring. <u>See the leaderboard</u></a>`:''}
-    ${pend && isAdmin() ? `<div class="banner"><b>Scores needed:</b> ${fmt(pend.date,{weekday:'short',month:'short',day:'numeric'})} at ${esc(pend.course)}. <a href="#scorekeeper">Enter them</a></div>`:''}
     ${nr ? `<section class="card next">
       <div class="kicker">Next Round</div>
       <div class="body"><div class="datebox"><b>${D(nr.date).getDate()}</b><span>${fmt(nr.date,{month:'short'}).toUpperCase()}</span></div>
@@ -611,7 +610,7 @@ V.schedule = () => {
   const t=todayISO(), have=new Set(allRounds().map(r=>r.date));
   return `<main><div class="pagehead"><h1>Schedule</h1></div>
   <div class="card" style="padding:4px 16px"><div class="list">
-  ${SEED.schedule.map(r=>{ const st = /closed|cancel/i.test(r.notes)&&!have.has(r.date)?'<span class="pill bad">Cancelled</span>':have.has(r.date)?'<span class="pill good">Scored</span>':r.date<t?'<span class="pill warn">Needs scores</span>':'<span class="pill neutral">Upcoming</span>';
+  ${SEED.schedule.map(r=>{ const st = /closed|cancel/i.test(r.notes)&&!have.has(r.date)?'<span class="pill bad">Cancelled</span>':have.has(r.date)?'<span class="pill good">Scored</span>':r.date<t?'<span class="pill neutral">No scores</span>':'<span class="pill neutral">Upcoming</span>';
     return `<div class="li"><span class="datebox" style="width:52px;height:52px;border-radius:10px;border-width:1.5px;color:var(--green-2)"><b style="font-size:20px">${D(r.date).getDate()}</b><span style="color:var(--muted);font-size:11px;margin:0">${fmt(r.date,{month:'short'}).toUpperCase()}</span></span>
     <div><div class="name">${esc(r.course)}</div><div class="small muted">${fmtTee(r.time)} · ${r.teeTimes??'?'} tee times${teeBoxTxt(r)}</div>${r.notes?`<div class="small muted">${esc(r.notes)}</div>`:''}</div>${st}</div>`; }).join('')}
   </div></div></main>`;
