@@ -1955,7 +1955,7 @@ document.addEventListener('click', async e=>{ const b=e.target.closest('#ethAgre
   b.disabled=true; live$('ethMsg').textContent='Saving…';
   const rec={pid:S.meId, name:S.meFull||'', email:S.email||'', uid:(window.TG_FB&&window.TG_FB.uid)||'', at:new Date().toISOString()};
   try{ await S.db.doc('ethics/'+S.meId).set(rec); S.ethics={...(S.ethics||{}), [S.meId]:rec}; render(); }
-  catch(err){ b.disabled=false; live$('ethMsg').textContent='Couldn’t save. Check your connection and try again. If it keeps failing, tell a leader.'; }
+  catch(err){ b.disabled=false; live$('ethMsg').textContent = (err&&err.code==='permission-denied') ? 'Couldn’t save: the database isn’t set up to accept sign-offs yet. A leader needs to publish the ethics rule in Firebase. (permission-denied)' : `Couldn’t save. Check your connection and try again. If it keeps failing, tell a leader. (${(err&&err.code)||'error'})`; }
 });
 
 /* ---------- router ---------- */
