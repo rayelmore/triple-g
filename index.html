@@ -590,7 +590,8 @@ function payoutsHTML(d, rows){
   <div class="list">${k.winners.length ? k.winners.map(w=>line(`${w.n}×`, esc(sname(w.pid)), w.amt)).join('') : '<div class="muted small">No skins won — every low score was tied or over par.</div>'}</div>` : ''}
   ${c ? `<h3 style="margin:14px 0 2px">Closest to the pin <span class="small muted">· ${c.players} in · pot ${money$(c.pot)}</span></h3>
   <div class="list">${ctpWins.length ? ctpWins.map(x=>line(`#${x.h}`, `${esc(sname(x.list[0].pid))} <span class="small muted">${ftin(x.list[0])}</span>`, c.pay)).join('') : '<div class="muted small">No closest-to-the-pin entries.</div>'}</div>` : ''}
-  <div class="small muted" style="margin-top:10px">All payouts are rounded to the nearest dollar ($0.50 and up rounds up).</div>
+  ${(()=>{ const R=roundDiff(P); return (q.pays.length||(k&&k.winners.length)||(c&&c.won)) ? `<div class="li" style="grid-template-columns:1fr auto;margin-top:10px;border-top:2px solid var(--gold)"><span><b>3G account</b><span class="small muted" style="display:block">From rounding${R.parts.length?': '+R.parts.map(x=>`${x[0]} ${x[1]>0?'+':'−'}${money$(Math.abs(x[1]))}`).join(' · '):''}</span></span><b>${R.net>0?'+':R.net<0?'−':''}${money$(Math.abs(R.net))}</b></div>` : ''; })()}
+  <div class="small muted" style="margin-top:10px">All payouts are rounded to the nearest dollar ($0.50 and up rounds up). Any extra goes back to the 3G account.</div>
   ${!P.hasHoles ? '<div class="small muted" style="margin-top:10px">Skins and closest to the pin only show for rounds scored hole by hole in the app.</div>' : ''}
   ${!P.known ? '<div class="small muted" style="margin-top:6px">No side-game sign-ups were recorded for this round, so everyone who played is counted in the pots.</div>' : ''}
   </section>`;
@@ -600,7 +601,8 @@ function payoutText(d){
   let t = `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners');
   if (k) t += `\n\nSkins (pot ${money$(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money$(w.amt)}`).join('\n') || 'No skins won');
   if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money$(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money$(c.pay)}`).join('\n') || 'No entries'); }
-  return t + '\n\nPayouts rounded to the nearest dollar.';
+  const R=roundDiff(P);
+  return t + '\n\nPayouts rounded to the nearest dollar.' + ((q.pays.length||(k&&k.winners.length)||(c&&c.won)) ? ' 3G account: '+diffLine(R.net)+'.' : '');
 }
 V.results = () => {
   const rounds = allRounds(); const d = S.resDate || rounds[rounds.length-1].date; const r = rounds.find(x=>x.date===d);
@@ -818,6 +820,14 @@ function skinsFor(d){
 const money2 = n => '$'+n.toFixed(2);
 /* 3G pays every payout to the nearest dollar: $0.50 and up rounds up, $0.49 and below rounds down */
 const payR = n => Math.floor((+n||0) + 0.5 + 1e-9);
+/* rounding difference between a pot and what was paid: leftover goes back to the 3G account, a shortfall is covered by it */
+function roundDiff(P){ const parts=[]; const q=P.q, k=P.k, c=P.c;
+  if (q && q.pays.length) parts.push(['Quota game', q.pot - q.pays.reduce((a,x)=>a+x.amt,0)]);
+  if (k && k.winners.length) parts.push(['Skins', k.pot - k.winners.reduce((a,x)=>a+x.amt,0)]);
+  if (c && c.won) parts.push(['Closest to the pin', c.pot - c.pay*c.won]);
+  const net = Math.round(parts.reduce((a,x)=>a+x[1],0)*100)/100;
+  return {parts:parts.filter(x=>Math.abs(x[1])>0.004), net}; }
+const diffLine = n => n>0 ? `${money$(n)} back to the 3G account` : n<0 ? `3G account covers ${money$(-n)}` : 'Pays out evenly, nothing left over';
 
 /* ---- Closest to the pin ---- */
 const inches = e => (+e.ft||0)*12 + (+e.inch||0);
