@@ -72,6 +72,12 @@ main{padding:18px 16px;display:grid;gap:16px}
 .avatars{display:flex;flex-wrap:wrap;gap:12px}
 .av{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font:800 20px var(--display);color:var(--gold);background:var(--green);border:3px solid var(--surface);box-shadow:0 1px 6px rgba(0,0,0,.18)}
 .av.sm{width:42px;height:42px;font-size:16px}
+.av{overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.xl{width:112px;height:112px;font-size:38px;border-width:4px}
+.av.xs{width:28px;height:28px;font-size:11px;border-width:2px;box-shadow:none}
+.wholist>div{display:flex;align-items:center;gap:8px}
+.photobox{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--green);color:#fff;border:0;border-radius:12px;padding:11px 18px;font-weight:700;cursor:pointer;text-decoration:none}
 .btn.gold{background:var(--gold);color:#1d2417}
 .btn.ghost{background:transparent;color:var(--green-2);border:1.5px solid var(--green-2)}
@@ -381,7 +387,7 @@ SEED.players.forEach(p=>{ const m=(p.display||'').match(/\(([^)]+)\)/); if (m &&
 const AUTO_IN = ['p6','p8','p9','p10','p16','p17','p18','p19','p24','p26','p29','p31','p36','p41','p42','p43','p48','p50','p51','p54'];
 SEED.players.forEach(p=>{ p.auto = AUTO_IN.includes(p.id); });
 (()=>{ const i = SEED.membership.findIndex(m=>/dues total/i.test(m.name)); if (i>=0){ SEED.ledger = SEED.membership.slice(i); SEED.membership = SEED.membership.slice(0,i); } else SEED.ledger = []; })();
-const S = { ciRaw:{}, ciOut:{}, roster:{}, sched:{}, guestsIn:{}, guestBook:{}, meId:null, courses:{}, points:null, ctp:{}, games:null, db:null, user:null, dbStatus:'connecting', dbRounds:{}, checkins:{}, ciSub:null, ciDate:null, me:'', meFull:'', sort:{}, live:{}, liveSubs:{}, pairings:{}, payouts:{}, requests:{}, approvals:{} };
+const S = { photos:{}, ciRaw:{}, ciOut:{}, roster:{}, sched:{}, guestsIn:{}, guestBook:{}, meId:null, courses:{}, points:null, ctp:{}, games:null, db:null, user:null, dbStatus:'connecting', dbRounds:{}, checkins:{}, ciSub:null, ciDate:null, me:'', meFull:'', sort:{}, live:{}, liveSubs:{}, pairings:{}, payouts:{}, requests:{}, approvals:{} };
 const $ = s => document.querySelector(s);
 const live$ = id => ({ set textContent(v){ const el=document.getElementById(id); if (el) el.textContent=v; } });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -458,9 +464,12 @@ function whoSub(id){ const p=PBY[id], g=(S.guestsIn||{})[id]; const bits=[];
   const games=[inGame(id,'skins')?'Skins':'', inGame(id,'ctp')?'CTP':''].filter(Boolean); bits.push(games.length?games.join(' + '):'No side games');
   const c=(S.checkins||{})[id]||g; if (c?.late) bits.push('late add');
   return bits.join(' · '); }
+/* profile photo if the player added one, otherwise initials */
+const photoOf = id => (id && (S.photos||{})[id]) || '';
+const avFace = (id, nm) => { const ph=photoOf(id); return /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(ph) ? `<img src="${ph}" alt="" loading="lazy">` : esc(initials(nm)); };
 function whoAv(id){ const g=(S.guestsIn||{})[id]; const nm=whoName(id);
-  return `<button class="avb" data-who="${id}" aria-label="${esc(nm)} — ${esc(whoSub(id))}" title="${esc(nm)}"><span class="av${g?' g':''}">${esc(initials(nm))}</span></button>`; }
-function avatar(p, sm){ return `<span class="av${sm?' sm':''}" title="${esc(p.name)}">${esc(initials(p.name))}</span>`; }
+  return `<button class="avb" data-who="${id}" aria-label="${esc(nm)} — ${esc(whoSub(id))}" title="${esc(nm)}"><span class="av${g?' g':''}">${avFace(id,nm)}</span></button>`; }
+function avatar(p, sm){ return `<span class="av${sm?' sm':''}" title="${esc(p.name)}">${avFace(p.id,p.name)}</span>`; }
 function plusHtml(n){ return n===null ? '—' : `<span class="${n>=0?'up':'down'}">${n>=0?'+':''}${n}</span>`; }
 function sortable(id, rows, cols, k0, d0='desc'){
   const s = S.sort[id] || (S.sort[id] = {key:k0, dir:d0});
@@ -515,7 +524,8 @@ V.home = () => {
       ${playing.length+guestsToday().length?`<div class="small muted" style="margin:-6px 0 12px">Skins: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'skins')).length} · Closest to the pin: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'ctp')).length}</div>`:''}
       ${Object.keys(S.ciOut||{}).length?`<div class="small" style="margin:-4px 0 12px"><b>Out this week:</b> ${Object.keys(S.ciOut).filter(id=>PBY[id]).map(id=>esc(sname(id))+(S.ciOut[id].late?' <span class="late">(late)</span>':'')).join(', ')}</div>`:''}
       ${(()=>{ const la=[...Object.values(S.checkins).filter(c=>c.late), ...guestsToday().filter(g=>g.late)]; return la.length?`<div class="small" style="margin:-4px 0 12px"><b>Late adds:</b> ${la.map(c=>esc(sname(c.pid||c.id))).join(', ')}</div>`:''; })()}
-      ${playing.length+guestsToday().length?`<button class="linkbtn" id="whoNames">${S.whoList?'Hide names':'Show names'}</button>${S.whoList?`<div class="wholist">${[...playing.map(p=>p.id), ...guestsToday().map(g=>g.id)].sort((a,b)=>whoName(a).localeCompare(whoName(b))).map(id=>`<div><b>${esc(whoName(id))}</b> <span class="muted small">${esc(whoSub(id))}</span></div>`).join('')}</div>`:''}`:''}
+      ${playing.length+guestsToday().length?`<button class="linkbtn" id="whoNames">${S.whoList?'Hide names':'Show names'}</button>${S.whoList?`<div class="wholist">${[...playing.map(p=>p.id), ...guestsToday().map(g=>g.id)].sort((a,b)=>whoName(a).localeCompare(whoName(b))).map(id=>`<div><span class="av xs${(S.guestsIn||{})[id]?' g':''}">${avFace(id,whoName(id))}</span><span><b>${esc(whoName(id))}</b> <span class="muted small">${esc(whoSub(id))}</span></span></div>`).join('')}</div>`:''}`:''}
+      ${meId() && S.dbStatus==='ready' && !photoOf(meId()) ? `<div class="small" style="margin:0 0 12px"><a href="#access">📷 Add your photo</a> <span class="muted">so the guys can spot you here</span></div>`:''}
       ${deadlineLine()}
       <button class="btn" id="openCheckin" ${S.dbStatus==='ready'?'':'disabled'}>${!meId() ? 'Check In' : S.checkins[meId()] ? (isRegular(meId()) ? 'In ✓ · Can’t make it?' : 'Change my check-in') : (S.ciOut[meId()] ? 'Out this week · Change' : 'Check In')}</button>
     </section>
@@ -1388,12 +1398,40 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     ${tile('#standings','trophy','Standings','2026 season')}
   </div></section></main>`;
 V.access = () => `<main>${back()}<div class="pagehead"><h1>My Account</h1></div>
+  ${meId() ? `<section class="card"><h2>My Photo</h2><div class="photobox"><span class="av xl">${avFace(meId(), S.meFull)}</span>
+    <div><div class="small muted" style="margin-bottom:10px">${photoOf(meId()) ? 'This shows everywhere your initials used to.' : 'Add a photo so it shows instead of your initials on Who’s Playing, the leaderboard and pairings.'}</div>
+    <div class="row"><label class="btn" for="phFile" ${S.dbStatus==='ready'?'':'aria-disabled="true"'}>📷 ${photoOf(meId()) ? 'Change photo' : 'Add photo'}</label>${photoOf(meId()) ? '<button class="btn ghost danger" id="phDel">Remove</button>' : ''}</div>
+    <input type="file" id="phFile" accept="image/*" hidden ${S.dbStatus==='ready'?'':'disabled'}></div></div>
+    <div class="small" id="phMsg" role="status"></div></section>` : ''}
   <section class="card"><div class="list">
     <div class="li" style="grid-template-columns:110px 1fr"><b>Signed in</b><span>${esc(S.meFull)}<br><span class="muted small">${esc(S.email||'')}</span></span></div>
     <div class="li" style="grid-template-columns:110px 1fr"><b>Role</b><span>${S.role==='admin'?'Leader (admin): everything, including Admin pages':'Member: check in, add guests, score your group, submit requests'}</span></div>
   </div>
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="pwReset">Email me a password-change link</button><button class="btn ghost danger" id="signOut">Sign out</button></div>
   <div class="small" id="accMsg" role="status"></div></section></main>`;
+
+/* ---- profile photo: crop to a square, shrink to a small thumbnail on the phone, save in Firestore ---- */
+function shrinkPhoto(file, size=192){
+  return new Promise((ok, bad)=>{ const url=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(url); const s=Math.min(im.naturalWidth, im.naturalHeight); if (!s) return bad(new Error('empty'));
+      const c=document.createElement('canvas'); c.width=c.height=size; const x=c.getContext('2d');
+      x.imageSmoothingQuality='high'; x.drawImage(im, (im.naturalWidth-s)/2, (im.naturalHeight-s)/2, s, s, 0, 0, size, size);
+      let q=.82, out=c.toDataURL('image/jpeg', q); while (out.length>60000 && q>.4){ q-=.12; out=c.toDataURL('image/jpeg', q); } ok(out); };
+    im.onerror=()=>{ URL.revokeObjectURL(url); bad(new Error('unreadable')); }; im.src=url; });
+}
+document.addEventListener('change', async e=>{ if (e.target.id!=='phFile') return;
+  const f=e.target.files&&e.target.files[0]; e.target.value=''; if (!f || !meId() || !S.db) return;
+  const msg=()=>live$('phMsg'); msg().textContent='Saving your photo…';
+  try{ const img=await shrinkPhoto(f);
+    await S.db.doc('photos/'+meId()).set({pid:meId(), img, at:new Date().toISOString()});
+    S.photos={...S.photos, [meId()]:img}; render(); live$('phMsg').textContent='Photo saved.'; }
+  catch(err){ msg().textContent = err && /unreadable|empty/.test(err.message) ? 'That picture couldn’t be opened. Try a different one (a regular photo from your camera works best).' : 'Couldn’t save the photo. Check your signal and try again.'; }
+});
+document.addEventListener('click', async e=>{ if (!e.target.closest('#phDel') || !meId() || !S.db) return;
+  if (!confirm('Remove your photo? Your initials will show instead.')) return;
+  try{ await S.db.doc('photos/'+meId()).delete(); const m={...S.photos}; delete m[meId()]; S.photos=m; render(); live$('phMsg').textContent='Photo removed.'; }
+  catch(err){ live$('phMsg').textContent='Couldn’t remove it. Try again.'; }
+});
 
 /* ---- events for new tools ---- */
 document.addEventListener('change', e=>{ const t=e.target;
@@ -2180,6 +2218,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
+    db.collection('photos').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id&&v.img) m[v._id]=v.img; }); S.photos=m; render(); }, ()=>{});
     db.collection('roster').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id) m[v.id]=v; }); S.roster=m; applyRoster(); render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
     db.collection('sched').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.sched=m; applySched(); render(); }, ()=>{});
     subRound(S.ciDate);
