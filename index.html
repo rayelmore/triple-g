@@ -97,6 +97,12 @@ main{padding:18px 16px;display:grid;gap:16px}
 .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12.5px;font-weight:700;border:1px solid currentColor;white-space:nowrap}
 .pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.neutral{color:var(--muted)}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.wbtn{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;text-decoration:none;width:100%;box-sizing:border-box}.wbtn svg{width:22px;height:22px}
+.letter{font-size:16px;line-height:1.55}.letter h2{font:800 24px/1.2 var(--display);color:var(--green);margin:0 0 12px}
+.letter h3{font:700 19px/1.2 var(--display);color:var(--green);margin:20px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--gold)}
+.letter p{margin:0 0 12px}.letter ul,.letter ol{margin:0 0 12px;padding-left:22px}.letter li{margin:4px 0}
+.lglogo{display:block;width:96px;height:auto;margin:0 auto 12px;border-radius:12px}
+@media print{.tabbar,.noprint,#view main > a.small{display:none!important}body{background:#fff}.letter{box-shadow:none;border:0}}
 .tile{display:grid;gap:4px;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:var(--ink)}
 .tile b{font:700 19px var(--display)} .tile span{color:var(--muted);font-size:14px}
 .tile .ti{width:38px;height:38px;border-radius:10px;background:var(--gold-soft);display:grid;place-items:center;color:var(--green-2)}
@@ -530,6 +536,7 @@ V.home = () => {
       ${tile('#standings','trophy','Standings','2026 season')}
       ${isAdmin() ? tile('#more','shield','Leadership','Requests, payouts & more') : tile('#access','shield','My Account','Password & sign out')}
     </div>
+    <a class="btn ghost big wbtn" href="#welcome">${ICON.card} New Member Welcome Letter</a>
   </main>`;
 };
 V.members = () => {
@@ -906,7 +913,7 @@ function matchHTML(d, L, pars, rows){
     return `<section class="card"><h2 style="margin:0 0 4px">Set up your match</h2>
     <div class="small muted">Pick up to 4 players you have a side bet with. ${me&&pool.includes(me)?'You are included automatically. ':''}Only you see this, on this phone, for today's round.</div>
     <div class="pick2" style="margin-top:8px">${list.length ? list.map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-mpk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&others.length>=4?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(shortName(PBY[id].name))}</span></label>`).join('') : '<div class="muted small">Nobody is checked in or scoring yet.</div>'}</div>
-    <div class="row" style="margin-top:10px"><button class="btn" id="mGo" ${others.length?'':'disabled'}>Show my match</button>${saved.length?'<button class="btn ghost" id="mCancel">Cancel</button>':''}</div></section>`;
+    <div class="row" style="margin-top:10px"><button class="btn" id="mGo" ${others.length?'':'disabled'}>Show my match</button>${saved.length?'<button class="btn ghost" id="mCancel">Back</button><button class="btn ghost danger" id="mEnd">End match</button>':''}<span class="small" id="mMsg" role="status">${S.mEnded?'Match ended. Pick new players any time.':''}</span></div></section>`;
   }
   const ids=[...new Set([...(me&&pool.includes(me)?[me]:[]), ...saved])];
   const data=ids.map(id=>{ const H=L[id]?.holes||{}; return {id, H, f:nineTot(H,pars,NINE.front), b:nineTot(H,pars,NINE.back), t:nineTot(H,pars,[...NINE.front,...NINE.back])}; });
@@ -917,15 +924,19 @@ function matchHTML(d, L, pars, rows){
   const order=[...data].sort((a,b)=>(a.t.n?a.t.tp:999)-(b.t.n?b.t.tp:999));
   const grid = hs => { const best={}; hs.forEach(h=>{ const g=data.map(x=>+x.H[h]).filter(v=>v>0); if (g.length>1){ const lo=Math.min(...g); if (g.filter(v=>v===lo).length===1) best[h]=lo; } });
     return `<div class="hg"><span></span>${hs.map(h=>`<span class="hn">${h}</span>`).join('')}${order.map(x=>`<span class="nm">${esc(sname(x.id))}</span>${hs.map(h=>{ const g=+x.H[h]; return `<span class="${g>0&&best[h]===g?'best':''}">${g>0?g:'·'}</span>`; }).join('')}`).join('')}</div>`; };
-  return `<section class="card"><div class="pagehead"><h2 style="margin:0">My match</h2><button class="btn ghost" id="mEdit" style="padding:6px 12px">Change players</button></div>
+  return `<section class="card"><div class="pagehead"><h2 style="margin:0">My match</h2><span class="row" style="gap:6px"><button class="btn ghost" id="mEdit" style="padding:6px 12px">Change players</button><button class="btn ghost danger" id="mEnd" style="padding:6px 12px">End match</button></span></div>
+  ${S.mConfirm?`<div class="banner" style="margin-top:8px"><b>End this match?</b> Your side-bet view clears. Scores are not affected.<div class="row" style="margin-top:8px"><button class="btn ghost danger" id="mEndYes">Yes, end match</button><button class="btn ghost" id="mEndNo">Keep match</button></div></div>`:''}
   <div class="small muted">Lowest score wins each part. ★ marks who's ahead, compared to par so it's fair mid-round.</div>
   <table class="mt" style="margin-top:6px"><thead><tr><th>Player</th><th>Front</th><th>Back</th><th>Overall</th></tr></thead><tbody>
   ${order.map(x=>`<tr><td>${esc(sname(x.id))}${x.id===me?' <span class="small muted">(you)</span>':''}</td>${cell(x,'f',LF)}${cell(x,'b',LB)}${cell(x,'t',LT)}</tr>`).join('')}</tbody></table>
   ${pars ? `<h3 style="margin:14px 0 0;font-size:15px">Front 9</h3>${grid(NINE.front)}<h3 style="margin:12px 0 0;font-size:15px">Back 9</h3>${grid(NINE.back)}<div class="small muted" style="margin-top:6px">Highlighted = lowest score on the hole.</div>` : '<div class="small muted">Hole-by-hole scores show once the course pars are set.</div>'}
   <div class="small muted" style="margin-top:10px">Private to you. Clears after today's round.</div></section>`;
 }
-document.addEventListener('click', e=>{ const b=e.target.closest('[data-lbm],#mGo,#mCancel,#mEdit'); if (!b) return; const d=roundDate();
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-lbm],#mGo,#mCancel,#mEdit,#mEnd,#mEndYes,#mEndNo'); if (!b) return; const d=roundDate();
+  S.mEnded=false; if (b.id!=='mEnd') S.mConfirm=false;
   if (b.dataset.lbm){ S.lbMode=b.dataset.lbm; S.mPickOpen=false; S.mPick=null; }
+  else if (b.id==='mEnd'){ S.mPickOpen=false; S.mPick=null; S.mConfirm=true; }
+  else if (b.id==='mEndYes'){ saveMatch(d, []); try{ localStorage.removeItem(MKEY(d)); }catch(e){} S.mPickOpen=false; S.mPick=null; S.mEnded=true; }
   else if (b.id==='mGo'){ saveMatch(d, [...(S.mPick||matchIds(d))].filter(id=>id!==meId()).slice(0,4)); S.mPickOpen=false; S.mPick=null; }
   else if (b.id==='mCancel'){ S.mPickOpen=false; S.mPick=null; }
   else if (b.id==='mEdit'){ S.mPickOpen=true; S.mPick=matchIds(d); }
@@ -1351,10 +1362,11 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     <a href="#score">${ICON.edit}<b>Scorekeeper</b><span>Enter round scores</span></a>
     <a class="goldb" href="#results">${ICON.money}<b>Results &amp; Payouts</b><span>Winners each round</span></a>
   </div>
-  ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
+  ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#welcome','card','Welcome Letter','How our group operates')}${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
   ${!isAdmin() ? '' : `<section class="card"><h2>Leadership Tools</h2><div class="lt">
     ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups',true)}
     ${ltRow('#admin','users','Admin','Members & schedule')}
+    ${ltRow('#welcome','card','Welcome Letter','View or update for the new year')}
     ${ltRow('#expenses','wallet','Expenditure Dashboard','Manage requests and approvals')}
     ${ltRow('#request','fileplus','Submit Request','New expenditure request')}
     ${ltRow('#points','bars','Points & Skins','Stableford points and skins buy-in')}
@@ -1752,8 +1764,107 @@ document.addEventListener('click', async e=>{
   }
 });
 
+
+/* ---- New Member Welcome Letter (leaders update it each year; stored in settings/welcome) ---- */
+const WELCOME_DEFAULT = {year:2026, body:`# Welcome to Triple-G (Gentlemen Golf Group)
+
+Attached you will find information on how our group operates, along with the Triple-G Code of Ethics, which requires your acknowledgement to become a member. All correspondence from us will start with **TRIPLE-G** in the subject line.
+
+Below you will find information to make the most of your membership.
+
+**Triple-G:** A group of people with the common love of golf who are honorable people with integrity and respect for others, along with the game of golf.
+
+## Standard Group Information
+
+Please REPLY ASAP (**DO NOT REPLY ALL**) but **NO LATER THAN SUNDAY 12:00 PM** if you plan on attending, so we don't hold unnecessary tee times.
+
+**Reminder:** If you cannot make your commitment to play, **please notify Chris (Tiger) J 813-992-3485 or Coach 813-943-8199 only, ASAP**, as we may have a player on standby wanting to play in your spot.
+
+- **Group News:** Weekly information or announcements
+- **Round of Play:** Results from Wednesday round of play
+- **Next Scheduled Round:** Upcoming week round of play, location, tee time and cost
+
+## Excel and Points
+
+For new members, please see the attached Excel included with the weekly email that goes out on Wednesdays or NLT Thursdays. Review the tabs at the bottom of the Excel, which include the **Scores** tab (your points from all your rounds of play), the **Players Points Required** tab (your minimum points needed to score for the next round of play) and the **Golf Schedule** tab (upcoming rounds of play).
+
+**Explanation of Point System:** Your needed points is a combination of your last 3 rounds divided by 3.
+
+**Scoring:** Bogey = 1 point, Par = 2 points, Birdie = 4 points, Eagle = 5 points, Hole-in-One = 6 points
+
+Our group allows **2 Mulligans per round** of play, which can be used only on the tee box.
+
+## Mulligan vs Provisional Mulligan
+
+I was asked to clarify the difference between the two, so here are two examples:
+
+**Example 1, Mulligan:** You hit your ball from the tee box and it clearly goes out of bounds or wherever. You take a mulligan, and now the mulligan becomes your ball of play.
+
+**Example 2, Provisional Mulligan:** You hit your ball from the tee box and are not sure if it's out of bounds, lost or in play. If you call a Provisional Mulligan, you proceed to hit a second ball from the tee box and it stops in the fairway. Now you locate your 1st ball hit from the tee box. If it is still in play, **YOU MUST** play the 1st ball, retain your provisional mulligan and pick up the second ball lying in the fairway. If the 1st ball is out of bounds or lost, then the provisional mulligan that you hit into the fairway becomes your ball of play. The purpose of the provisional mulligan is not for you to select the best ball but to speed up play, so you don't have to return to the tee box if your 1st ball is out of play or lost.
+
+## Lost Ball Rule
+
+Instead of the player returning to the spot of the previous shot in the event of a lost ball or a ball out of bounds, the player can take a drop in the nearest spot of the fairway (within two club-lengths of the edge of the fairway), no nearer the hole than where the ball crossed the OB line, with a two-stroke penalty.
+
+## Logo Shirts
+
+If you would like to have the group logo on your shirt, please take a shirt of your choosing to the location below and tell them you would like the logo for **Gentlemen Golf Group**. Cost is $12.00 per shirt.
+
+1. Westfield Brandon Mall: Custom Embroidery & T-Shirts, 813-689-6377 (kiosk by Victoria's Secret)
+
+## No Show
+
+If you commit to playing and are unable to play, please notify me or Coach at the numbers above. You are only allowed **2 unexcused NO SHOWS**. Upon the 3rd unexcused NO SHOW you will be removed from the email list and your membership cancelled.
+
+## Most Important
+
+**HAVE FUN!**
+
+**Triple-G Coordinators:** Steve Favors, Chris (Tiger) Jarnegan and Dennis (Coach) Donaldson`};
+function welcomeDoc(){ const w=S.welcome; return (w && w.body) ? w : WELCOME_DEFAULT; }
+/* tiny formatting: "# " title, "## " heading, "- " bullet, "1. " numbered, **bold**, blank line = new paragraph */
+function letterHTML(src){
+  const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  return String(src||'').replace(/\r/g,'').split(/\n\s*\n/).map(blk=>{ const lines=blk.split('\n').map(x=>x.trim()).filter(Boolean); if (!lines.length) return '';
+    if (lines.every(l=>/^[-•]\s+/.test(l))) return `<ul>${lines.map(l=>`<li>${inl(l.replace(/^[-•]\s+/,''))}</li>`).join('')}</ul>`;
+    if (lines.every(l=>/^\d+[.)]\s+/.test(l))) return `<ol>${lines.map(l=>`<li>${inl(l.replace(/^\d+[.)]\s+/,''))}</li>`).join('')}</ol>`;
+    if (lines.length===1 && /^##\s+/.test(lines[0])) return `<h3>${inl(lines[0].replace(/^##\s+/,''))}</h3>`;
+    if (lines.length===1 && /^#\s+/.test(lines[0])) return `<h2>${inl(lines[0].replace(/^#\s+/,''))}</h2>`;
+    return `<p>${lines.map(inl).join('<br>')}</p>`; }).join('');
+}
+V.welcome = () => {
+  const w=welcomeDoc(), ed=S.wEdit;
+  if (ed && isAdmin()){
+    return `<main>${back()}<div class="pagehead"><h1>Edit Welcome Letter</h1></div>${dbNote()}
+    <section class="card"><div class="form">
+      <label>Year<input type="number" id="wYear" value="${esc(ed.year)}" inputmode="numeric" style="max-width:140px"></label>
+      <label>Letter<textarea id="wBody" style="min-height:420px;font-size:15px;line-height:1.45">${esc(ed.body)}</textarea></label>
+      <div class="small muted">Leave a blank line between paragraphs. Start a line with <b>##</b> for a heading, <b>-</b> for a bullet. Put <b>**two stars**</b> around words to make them bold.</div>
+      <div class="row"><button class="btn" id="wSave" ${S.dbStatus==='ready'?'':'disabled'}>Save for everyone</button><button class="btn ghost" id="wPrev">Preview</button><button class="btn ghost" id="wCancel">Cancel</button><span class="small" id="wMsg" role="status"></span></div>
+      <button class="linkbtn" id="wReset" style="margin-top:6px">Start over from the original letter</button>
+    </div></section>
+    ${S.wPrev?`<section class="card letter">${letterHTML(ed.body)}</section>`:''}</main>`;
+  }
+  return `<main>${back()}<div class="pagehead"><h1>Welcome Letter</h1><span class="muted small">${esc(w.year||'')}</span></div>
+  <section class="card letter"><img src="3g-logo.jpg" alt="Triple-G logo" class="lglogo">${letterHTML(w.body)}
+    ${w.at?`<div class="small muted" style="margin-top:14px">Updated ${fmt(String(w.at).slice(0,10),{month:'short',day:'numeric',year:'numeric'})}${w.by?` by ${esc(w.by)}`:''}</div>`:''}</section>
+  <div class="row noprint"><button class="btn ghost" id="wPrint">Print or save as PDF</button>${isAdmin()?'<button class="btn" id="wEdit">Edit letter</button>':''}</div></main>`;
+};
+document.addEventListener('input', e=>{ const t=e.target; if (!S.wEdit) return; if (t.id==='wBody') S.wEdit.body=t.value; else if (t.id==='wYear') S.wEdit.year=t.value; });
+document.addEventListener('click', async e=>{ const b=e.target.closest('#wEdit,#wCancel,#wPrev,#wReset,#wSave,#wPrint'); if (!b) return;
+  if (b.id==='wPrint'){ window.print(); return; }
+  if (b.id==='wEdit'){ const w=welcomeDoc(); S.wEdit={year:w.year||new Date().getFullYear(), body:w.body}; S.wPrev=false; render(); scrollTo(0,0); return; }
+  if (b.id==='wCancel'){ S.wEdit=null; S.wPrev=false; render(); return; }
+  if (b.id==='wPrev'){ S.wPrev=!S.wPrev; render(); return; }
+  if (b.id==='wReset'){ S.wEdit={year:S.wEdit.year, body:WELCOME_DEFAULT.body}; render(); live$('wMsg').textContent='Original letter loaded. Not saved yet.'; return; }
+  if (b.id==='wSave'){ const ed=S.wEdit; if (!ed || !String(ed.body).trim()){ live$('wMsg').textContent='The letter is empty.'; return; }
+    live$('wMsg').textContent='Saving…';
+    try{ await S.db.doc('settings/welcome').set({kind:'welcome', year:+ed.year||new Date().getFullYear(), body:String(ed.body), by:S.meFull||'', at:new Date().toISOString()}); S.wEdit=null; S.wPrev=false; render(); scrollTo(0,0); }
+    catch(err){ live$('wMsg').textContent='Couldn’t save. Check the connection, or the database rules may need settings/welcome allowed for leaders.'; } }
+});
+
 /* ---------- router ---------- */
-const TABS = {home:'home',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',welcome:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
@@ -2007,7 +2118,7 @@ window.bootDB = (db, prof, fbUser) => {
     ensureLive(S.ciDate);
     db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
-    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; }); render(); }, ()=>{});
+    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; }); render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
