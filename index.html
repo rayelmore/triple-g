@@ -101,6 +101,9 @@ main{padding:18px 16px;display:grid;gap:16px}
 .letter{font-size:16px;line-height:1.55}.letter h2{font:800 24px/1.2 var(--display);color:var(--green);margin:0 0 12px}
 .letter h3{font:700 19px/1.2 var(--display);color:var(--green);margin:20px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--gold)}
 .letter p{margin:0 0 12px}.letter ul,.letter ol{margin:0 0 12px;padding-left:22px}.letter li{margin:4px 0}
+.ethcall{display:flex;gap:12px;align-items:center;margin:0 0 14px;padding:14px 16px;border-radius:14px;background:#fff7e0;border:2px solid var(--gold);color:inherit;text-decoration:none;font-size:16px}.ethcall svg{width:30px;height:30px;flex:none;color:var(--green)}
+.ethok{display:flex;gap:12px;align-items:center;font-size:16px}.ethok svg{width:34px;height:34px;flex:none;color:var(--green)}
+.ethh{font:700 16px/1.2 var(--display);color:var(--green);margin:14px 0 6px}
 .lglogo{display:block;width:96px;height:auto;margin:0 auto 12px;border-radius:12px}
 @media print{.tabbar,.noprint,#view main > a.small{display:none!important}body{background:#fff}.letter{box-shadow:none;border:0}}
 .tile{display:grid;gap:4px;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:var(--ink)}
@@ -528,6 +531,7 @@ V.home = () => {
       <div class="list">${res.map((x,i)=>`<div class="li"><span class="medal">${i+1}</span><span><span class="name">${esc(shortName(x.p.name))}</span> <span class="muted small">${x.v} pts</span></span>${plusHtml(x.plus)}</div>`).join('')}</div>
       <a href="#results" class="small">Full results →</a>
     </section>`:''}
+    ${needsEthics()?`<a class="ethcall" href="#ethics">${ICON.check}<span><b>Please read the Code of Ethics</b><br><span class="small">Tap here, read it, and tap “I’ve read and agree.”</span></span></a>`:''}
     <div class="tiles">
       ${tile('#leaderboard','bars','Live Leaderboard','Real-time scores')}
       ${tile('#score','pen','Scorekeeper','Score your group')}
@@ -537,6 +541,7 @@ V.home = () => {
       ${isAdmin() ? tile('#more','shield','Leadership','Requests, payouts & more') : tile('#access','shield','My Account','Password & sign out')}
     </div>
     <a class="btn ghost big wbtn" href="#welcome">${ICON.card} New Member Welcome Letter</a>
+    <a class="btn ghost big wbtn" href="#ethics">${ICON.check} Code of Ethics</a>
   </main>`;
 };
 V.members = () => {
@@ -1362,11 +1367,12 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     <a href="#score">${ICON.edit}<b>Scorekeeper</b><span>Enter round scores</span></a>
     <a class="goldb" href="#results">${ICON.money}<b>Results &amp; Payouts</b><span>Winners each round</span></a>
   </div>
-  ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#welcome','card','Welcome Letter','How our group operates')}${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
+  ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#welcome','card','Welcome Letter','How our group operates')}${ltRow('#ethics','check','Code of Ethics','Read and agree')}${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
   ${!isAdmin() ? '' : `<section class="card"><h2>Leadership Tools</h2><div class="lt">
     ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups',true)}
     ${ltRow('#admin','users','Admin','Members & schedule')}
     ${ltRow('#welcome','card','Welcome Letter','View or update for the new year')}
+    ${ltRow('#ethics','check','Code of Ethics','See who has agreed')}
     ${ltRow('#expenses','wallet','Expenditure Dashboard','Manage requests and approvals')}
     ${ltRow('#request','fileplus','Submit Request','New expenditure request')}
     ${ltRow('#points','bars','Points & Skins','Stableford points and skins buy-in')}
@@ -1848,7 +1854,7 @@ V.welcome = () => {
   return `<main>${back()}<div class="pagehead"><h1>Welcome Letter</h1><span class="muted small">${esc(w.year||'')}</span></div>
   <section class="card letter"><img src="3g-logo.jpg" alt="Triple-G logo" class="lglogo">${letterHTML(w.body)}
     ${w.at?`<div class="small muted" style="margin-top:14px">Updated ${fmt(String(w.at).slice(0,10),{month:'short',day:'numeric',year:'numeric'})}${w.by?` by ${esc(w.by)}`:''}</div>`:''}</section>
-  <div class="row noprint"><button class="btn ghost" id="wPrint">Print or save as PDF</button>${isAdmin()?'<button class="btn" id="wEdit">Edit letter</button>':''}</div></main>`;
+  <div class="row noprint"><a class="btn" href="#ethics">Read the Code of Ethics</a><button class="btn ghost" id="wPrint">Print or save as PDF</button>${isAdmin()?'<button class="btn" id="wEdit">Edit letter</button>':''}</div></main>`;
 };
 document.addEventListener('input', e=>{ const t=e.target; if (!S.wEdit) return; if (t.id==='wBody') S.wEdit.body=t.value; else if (t.id==='wYear') S.wEdit.year=t.value; });
 document.addEventListener('click', async e=>{ const b=e.target.closest('#wEdit,#wCancel,#wPrev,#wReset,#wSave,#wPrint'); if (!b) return;
@@ -1863,8 +1869,59 @@ document.addEventListener('click', async e=>{ const b=e.target.closest('#wEdit,#
     catch(err){ live$('wMsg').textContent='Couldn’t save. Check the connection, or the database rules may need settings/welcome allowed for leaders.'; } }
 });
 
+
+/* ---- Code of Ethics: members tap "I've read and agree"; stored in ethics/{pid} ---- */
+const ETHICS = {adopted:'2022-11-29', body:`# Gentlemen Golf Group (Triple-G) Code of Ethics
+
+This code is established to promote and maintain the highest professional standards of service and conduct among the membership of the Gentlemen Golf Group (Triple-G). Steadfastly maintaining these principles will accrue to the membership a level of justly deserved recognition and respect from those who come into contact with any member.
+
+Through high regard for, and strong enforcement of, the code, membership in this association will be deemed a significant indicator of individual responsibility, character and professionalism.
+
+**As a member of the Triple-G, I accept and fully agree to abide by this code and pledge myself to:**
+
+- Recognize and discharge all of my responsibilities and duties in such a fashion as to be a credit to Triple-G and its members.
+- Maintain the highest standards of personal conduct to reflect positively upon and add to the stature of Triple-G and refrain from any act tending to promote my own interest at the expense of the dignity and integrity of Triple-G or its fellow members.
+- Abstain from making false or untrue statements or causing public embarrassment to another member of Triple-G.
+- Promptly report all known or suspected violations of the code of ethics and voluntarily participate as a witness and present information in all proceedings to determine the possibility of a violation of this code of ethics.
+
+I acknowledge that membership into Triple-G is voluntary and at the discretion of its members.
+
+Violations of the Triple-G Code of Ethics may result in an immediate termination of membership and play with Triple-G by coordinators Steven Favors and/or Dennis Donaldson.`};
+function myEthics(){ return S.meId ? (S.ethics||{})[S.meId] : null; }
+function needsEthics(){ return S.dbStatus==='ready' && S.ethicsLoaded && S.meId && !myEthics(); }
+const ethDate = at => { const x=String(at); return x.length>10 ? new Date(x).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : fmt(x,{month:'short',day:'numeric',year:'numeric'}); };
+V.ethics = () => {
+  const mine = myEthics();
+  const ack = mine
+    ? `<div class="ethok">${ICON.check}<div><b>You agreed to the Code of Ethics</b><div class="small muted">${ethDate(mine.at)}</div></div></div>`
+    : `<p style="margin:0 0 10px">By tapping the button, you confirm you have read the Code of Ethics and agree to abide by it.</p>
+       <button class="btn big" id="ethAgree" style="width:100%" ${S.dbStatus==='ready'&&S.meId?'':'disabled'}>I’ve read and agree</button>
+       <div class="small" id="ethMsg" role="status" style="margin-top:8px"></div>`;
+  let lead = '';
+  if (isAdmin()){
+    const E = S.ethics||{}, R = ROSTER().filter(p=>!p.guest && !p.inactive).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name)));
+    const yes = R.filter(p=>E[p.id]), no = R.filter(p=>!E[p.id]);
+    lead = `<section class="card noprint"><h2>Who has agreed</h2>
+      <div class="muted small" style="margin:-8px 0 10px">${yes.length} of ${R.length} active members</div>
+      ${no.length?`<h3 class="ethh">Not yet (${no.length})</h3><div class="list">${no.map(p=>`<div class="li"><span class="name">${esc(shortName(p.name))}</span></div>`).join('')}</div>`:'<div class="small">Every active member has agreed.</div>'}
+      ${yes.length?`<h3 class="ethh">Agreed (${yes.length})</h3><div class="list">${yes.map(p=>`<div class="li"><span class="name">${esc(shortName(p.name))}</span><span class="small muted" style="margin-left:auto">${ethDate(E[p.id].at)}</span></div>`).join('')}</div>`:''}
+    </section>`;
+  }
+  return `<main>${back()}<div class="pagehead"><h1>Code of Ethics</h1><span class="muted small">Adopted ${ethDate(ETHICS.adopted)}</span></div>${dbNote()}
+  <section class="card letter"><img src="3g-logo.jpg" alt="Triple-G logo" class="lglogo">${letterHTML(ETHICS.body)}</section>
+  <section class="card noprint">${ack}</section>
+  ${lead}
+  <div class="row noprint"><button class="btn ghost" id="wPrint">Print or save as PDF</button></div></main>`;
+};
+document.addEventListener('click', async e=>{ const b=e.target.closest('#ethAgree'); if (!b) return;
+  b.disabled=true; live$('ethMsg').textContent='Saving…';
+  const rec={pid:S.meId, name:S.meFull||'', email:S.email||'', uid:(window.TG_FB&&window.TG_FB.uid)||'', at:new Date().toISOString()};
+  try{ await S.db.doc('ethics/'+S.meId).set(rec); S.ethics={...(S.ethics||{}), [S.meId]:rec}; render(); }
+  catch(err){ b.disabled=false; live$('ethMsg').textContent='Couldn’t save. Check your connection and try again. If it keeps failing, tell a leader.'; }
+});
+
 /* ---------- router ---------- */
-const TABS = {home:'home',welcome:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',welcome:'more',ethics:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
@@ -2119,6 +2176,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
     db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; }); render(); }, ()=>{});
+    db.collection('ethics').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.ethics=m; S.ethicsLoaded=true; render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
