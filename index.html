@@ -1403,6 +1403,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     ${ltRow('#courses','users','Course Pars','Hole-by-hole pars for scoring')}
     ${ltRow('#access','shield','My Account','Sign-in, password, sign out')}
     ${ltRow('#finalize','check','Finalize Game Day','Lock scores &amp; update quotas',true)}
+    ${ltRow('#backup','shield','Season Backup','Download a season to Excel')}
   </div></section>`}
   <section class="card"><h2>Group Info</h2><div class="tiles">
     ${tile('#schedule','cal','Schedule','Courses & tee times')}
@@ -1538,6 +1539,7 @@ V.admin = () => `<main>${back()}<div class="pagehead"><h1>Admin</h1></div>
     ${ltRow('#admcheckin','check','Check-in Manager','Check players in or out for this week')}
     ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups')}
     ${ltRow('#admsched','check','Schedule','Add, change or cancel rounds')}
+    ${ltRow('#backup','shield','Season Backup','Download a season to Excel')}
   </div></section></main>`;
 
 V.admmembers = () => {
@@ -1690,7 +1692,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -1971,8 +1973,133 @@ document.addEventListener('click', async e=>{ const b=e.target.closest('#ethAgre
   catch(err){ b.disabled=false; live$('ethMsg').textContent = (err&&err.code==='permission-denied') ? 'Couldn’t save: the database isn’t set up to accept sign-offs yet. A leader needs to publish the ethics rule in Firebase. (permission-denied)' : `Couldn’t save. Check your connection and try again. If it keeps failing, tell a leader. (${(err&&err.code)||'error'})`; }
 });
 
+
+/* ---- Season backup: leaders download one Excel file per season (Jan 1 – Dec 31) ---- */
+const BK_COL_2025 = 'y2526';   // the old Excel's "2025-26" dues column holds the 2025 season dues
+const duesKey = y => +y===2025 ? BK_COL_2025 : 'y'+y;
+function backupSeasons(){
+  const ys = new Set([new Date().getFullYear()]);
+  const add = d => { const y=+String(d||'').slice(0,4); if (y>2000) ys.add(y); };
+  allRounds().forEach(r=>add(r.date)); SEED.schedule.forEach(r=>add(r.date)); Object.values(S.requests||{}).forEach(r=>add(r.at));
+  if (SEED.membership.some(m=>m[BK_COL_2025])) ys.add(2025);
+  SEED.membership.forEach(m=>Object.keys(m).forEach(k=>{ const mm=k.match(/^y(20\d\d)$/); if (mm && m[k] && +mm[1]<=new Date().getFullYear()) ys.add(+mm[1]); }));
+  return [...ys].sort((a,b)=>b-a);
+}
+async function loadXLSX(){
+  if (window.XLSX && window.XLSX.utils) return window.XLSX;
+  try{ window.XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs'); }
+  catch(e){ window.XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm'); }
+  return window.XLSX;
+}
+async function bkGet(path){ try{ return docsOf(await S.db.collection(path).get()); }catch(e){ bkGet.failed=(bkGet.failed||0)+1; return []; } }
+/* load every round's saved details once (hole scores, closest to the pin, check-ins) without opening live listeners */
+async function bkLoadRound(d){
+  const today = d===S.ciDate;
+  const [live, ctp, cip, cig] = await Promise.all([bkGet(`live/${d}/players`), bkGet(`ctp/${d}/entries`), today?[]:bkGet(`checkins/${d}/players`), today?[]:bkGet(`checkins/${d}/guests`)]);
+  if (!S.liveSubs[d]){ const m={}; live.forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.live[d]=m; const c={}; ctp.forEach(v=>{ if(v&&v.pid&&v.hole) c[v.hole+'_'+v.pid]=v; }); S.ctp[d]=c; S.liveSubs[d]=true; }
+  if (!today && !S.pastCi[d]){ const a={}, g={}; cip.forEach(v=>{ if(v&&v.pid) a[v.pid]=v; }); cig.forEach(v=>{ if(v&&v.id){ g[v.id]=v; registerGuest(v); } }); S.pastCi[d]={players:a, guests:g}; }
+}
+async function buildSeason(Y, onStep){
+  const X = await loadXLSX(); bkGet.failed=0;
+  const y=String(Y), inY = d => String(d||'').slice(0,4)===y, today=todayISO();
+  const rounds = allRounds().filter(r=>inY(r.date) && r.date<=today);
+  for (let i=0;i<rounds.length;i++){ onStep && onStep(`Gathering round ${i+1} of ${rounds.length}…`); await bkLoadRound(rounds[i].date); }
+  onStep && onStep('Building the spreadsheet…');
+  const nm = id => PBY[id] ? shortName(PBY[id].name) : (S.guestBook?.[id] ? `${S.guestBook[id].first} ${S.guestBook[id].last}` : id);
+  const R = ROSTER(), endQ = p => quotaBefore(p, scoresFor(p), `${Y+1}-01-01`);
+  const sheets = [];
+  // Scores
+  const played = R.filter(p=>rounds.some(r=>scoresFor(p)[r.date]!==undefined) || (+Y===2025 && p.prior.length));
+  const sc = [['Player','Nickname','Member or guest', ...rounds.map(r=>`${r.date} ${r.course}`), 'Rounds', 'Average', 'Best', 'No-shows', `Quota going into ${Y+1}`, ...(+Y===2025?['Late-2025 rounds from the old Excel (used for 2026 quotas)']:[])]];
+  played.sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name))).forEach(p=>{ const s=scoresFor(p), v=rounds.map(r=>s[r.date]??''), nums=v.filter(x=>typeof x==='number');
+    sc.push([shortName(p.name), nick(p.name), p.guest?'Guest':'Member', ...v, nums.length, nums.length?Math.round(nums.reduce((a,b)=>a+b,0)/nums.length*10)/10:'', nums.length?Math.max(...nums):'', v.filter(x=>x==='NS').length, endQ(p)??'', ...(+Y===2025?[p.prior.join(', ')]:[])]); });
+  sheets.push(['Scores', sc]);
+  // Rounds
+  const sch = SEED.schedule.filter(r=>inY(r.date)), rd=[['Date','Course','Tee time','Tee box','Tee times','Players scored','Scored in','Finalized','Notes']];
+  [...new Set([...sch.map(r=>r.date), ...rounds.map(r=>r.date)])].sort().forEach(d=>{ const r=schedFor(d)||{}, a=rounds.find(x=>x.date===d), db=S.dbRounds[d];
+    const n=R.filter(p=>typeof scoresFor(p)[d]==='number').length;
+    rd.push([d, r.course||a?.course||'', r.time?fmtTee(r.time):'', r.teeBox||'', r.teeTimes??'', a?n:'', a?(a.source==='app'?'App':'Old Excel'):(d>today?'Upcoming':'Not played'), db?.finalized?'Yes':'', r.notes||'']); });
+  sheets.push(['Rounds', rd]);
+  // Hole by hole
+  const hb=[['Date','Course','Player',...Array.from({length:18},(_,i)=>'H'+(i+1)),'Gross','To par','Points']];
+  rounds.forEach(r=>{ const pars=courseInfo(r.course).pars, L={...Object.fromEntries(Object.entries(S.dbRounds[r.date]?.cards||{}).map(([k,h])=>[k,{pid:k,holes:h}])), ...(S.live[r.date]||{})};
+    Object.values(L).filter(x=>x&&x.holes&&Object.keys(x.holes).length).sort((a,b)=>nm(a.pid).localeCompare(nm(b.pid))).forEach(x=>{ const t=pars?cardTotals(x.holes,pars):{gross:x.gross,toPar:x.toPar,pts:x.pts};
+      hb.push([r.date, r.course, nm(x.pid), ...Array.from({length:18},(_,i)=>+x.holes[i+1]||''), t.gross??'', t.toPar??'', t.pts??'']); }); });
+  sheets.push(['Hole by hole', hb]);
+  // Payouts
+  const po=[['Date','Course','Game','Place / hole','Player','Detail','Payout ($)']];
+  rounds.forEach(r=>{ const P=payoutData(r.date);
+    P.q.pays.forEach(x=>po.push([r.date, r.course, 'Quota game', (x.tie?'T':'')+x.place, nm(x.pid), `${x.plus>=0?'+':''}${x.plus} over quota`, x.amt]));
+    if (P.k) P.k.winners.forEach(w=>po.push([r.date, r.course, 'Skins', `${w.n} skin${w.n>1?'s':''}`, nm(w.pid), '', w.amt]));
+    if (P.c) P.c.C.filter(x=>x.list.length).forEach(x=>po.push([r.date, r.course, 'Closest to the pin', '#'+x.h, nm(x.list[0].pid), ftin(x.list[0]), P.c.pay]));
+    const D=roundDiff(P); if (P.q.pays.length||(P.k&&P.k.winners.length)||(P.c&&P.c.won)) po.push([r.date, r.course, '3G account (rounding)', '', '', diffLine(D.net), D.net]); });
+  sheets.push(['Payouts', po]);
+  // Closest to the pin
+  const cp=[['Date','Course','Hole','Player','Feet','Inches']];
+  rounds.forEach(r=>Object.values(S.ctp[r.date]||{}).sort((a,b)=>a.hole-b.hole||(a.ft*12+ +a.inch)-(b.ft*12+ +b.inch)).forEach(e=>cp.push([r.date, r.course, +e.hole, nm(e.pid), +e.ft||0, +e.inch||0])));
+  sheets.push(['Closest to the pin', cp]);
+  // Check-ins
+  const ci=[['Date','Name','Member or guest','Status','Skins','Closest to the pin','Late','Guest of']];
+  const yn = v => v===false?'No':'Yes';
+  rounds.forEach(r=>{ const c = r.date===S.ciDate ? {players:S.ciRaw||{}, guests:S.guestsIn||{}} : (S.pastCi[r.date]||{players:{},guests:{}});
+    Object.values(c.players||{}).forEach(v=>ci.push([r.date, nm(v.pid), 'Member', v.status==='out'?'Out':'In', v.status==='out'?'':yn(v.skins), v.status==='out'?'':yn(v.ctp), v.late?'Yes':'', '']));
+    Object.values(c.guests||{}).forEach(g=>ci.push([r.date, `${g.first||''} ${g.last||''}`.trim(), 'Guest', 'In', yn(g.skins), yn(g.ctp), g.late?'Yes':'', g.host?nm(g.host):''])); });
+  sheets.push(['Check-ins', ci]);
+  // Pairings
+  const pr=[['Date','Group','Tee time','Players','Status']];
+  Object.values(S.pairings||{}).filter(P=>inY(P.date)).sort((a,b)=>a.date.localeCompare(b.date)).forEach(P=>(P.groups||[]).forEach((g,i)=>pr.push([P.date, i+1, teeAt(P.base||schedFor(P.date)?.time||'0800', i, P.interval||8), g.map(nm).join(', '), P.status||''])));
+  sheets.push(['Pairings', pr]);
+  // Dues
+  const dk=duesKey(Y), du=[['Member',`${Y} dues ($)`,'How / when paid']];
+  SEED.membership.slice().sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name))).forEach(m=>du.push([shortName(m.name), m[dk]||'', m[dk]?(m['memo'+dk.slice(1)]||''):'Unpaid']));
+  du.push([]); du.push(['Total collected', SEED.membership.reduce((a,m)=>a+(+m[dk]||0),0), `${SEED.membership.filter(m=>m[dk]).length} of ${SEED.membership.length} paid`]);
+  sheets.push(['Dues', du]);
+  // Expenses
+  const ex=[['Submitted','Who','What','Category','Amount ($)','Needed by','Decision','Decided by','Decided on','Details']];
+  Object.values(S.requests||{}).filter(r=>inY(r.at)).sort((a,b)=>a.at.localeCompare(b.at)).forEach(r=>{ const a=(S.approvals||{})[r._id||r.id]||{};
+    ex.push([String(r.at).slice(0,10), r.who||'', r.what||'', r.category||'', +r.amount||0, r.by||'', a.status||'Pending', a.by||'', a.at?String(a.at).slice(0,10):'', r.note||'']); });
+  sheets.push(['Expenses', ex]);
+  // Members
+  const me=[['Name','Nickname','Member or guest','Active','Phone','Email',`Rounds in ${Y}`,`Quota going into ${Y+1}`,'Code of Ethics agreed']];
+  R.filter(p=>!p.guest || played.includes(p)).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name))).forEach(p=>{ const e=(S.ethics||{})[p.id];
+    me.push([shortName(p.name), nick(p.name), p.guest?'Guest':'Member', p.inactive?'No':'Yes', p.phone||'', p.email||'', rounds.filter(r=>typeof scoresFor(p)[r.date]==='number').length, endQ(p)??'', e?String(e.at).slice(0,10):'']); });
+  sheets.push(['Members', me]);
+  // Summary (first tab)
+  const G=games(), done = +Y < new Date().getFullYear();
+  const sum=[[`Triple-G Season ${Y} Backup`],[],['Season',`January 1 – December 31, ${Y}`],['Status', done?'Season closed':`In progress (through ${fmt(today,{month:'short',day:'numeric',year:'numeric'})})`],
+    ['Created', new Date().toLocaleString('en-US')],['Created by', S.meFull||''],['Rounds played', rounds.length],['Players who scored', played.length],
+    ['Game settings', `Skins $${G.skins} · $${G.ctp} game ($${G.ctpShare} closest to the pin, $${G.ctp-G.ctpShare} quota game paid ${(G.qSplit||[60,30,10]).join('/')}) · payouts rounded to the nearest dollar`],
+    ...(rounds.some(r=>r.source!=='app')?[['Note','Rounds marked "Old Excel" were brought in from the group\'s Excel scorebook and have point totals only. Their quota-game payouts are worked out by the app from those totals (everyone counted in the pot), so they may differ from what was actually paid that day.']]:[]),
+    ...(+Y===2025?[['Note','2025 rounds were kept in the old Excel scorebook. This file holds what the app has for 2025: dues and each player\'s last 2025 rounds used to start 2026 quotas.']]:[]),
+    ...(bkGet.failed?[['Warning',`${bkGet.failed} part(s) of the database could not be read, so some details may be missing. Try again on a good connection.`]]:[]),
+    [],['Tabs in this file', sheets.map(x=>x[0]).join(', ')]];
+  const wb = X.utils.book_new();
+  [['Summary', sum], ...sheets].forEach(([name, aoa])=>{ const ws=X.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = (aoa[0]||[]).map((_,c)=>({wch: Math.min(40, Math.max(6, ...aoa.slice(0,200).map(r=>String(r[c]??'').length+1)))}));
+    if (name==='Summary') ws['!cols']=[{wch:22},{wch:90}];
+    X.utils.book_append_sheet(wb, ws, name); });
+  return {X, wb, file:`Triple-G Season ${Y} Backup (${today}).xlsx`, rounds:rounds.length};
+}
+V.backup = () => {
+  const ys=backupSeasons(), cur=new Date().getFullYear(), last=(S.backups&&S.backups.seasons)||{};
+  return `<main>${back()}<div class="pagehead"><h1>Season Backup</h1></div>${dbNote()}
+  <div class="muted">Download a full copy of a season (January 1 – December 31) as an Excel file: scores, hole-by-hole cards, payouts, check-ins, pairings, dues, expenses and members.</div>
+  <section class="card"><div class="list">${ys.map(Y=>`<div class="li" style="grid-template-columns:1fr auto;align-items:center"><div><div class="name">Season ${Y}</div><div class="small muted">${Y<cur?'Closed':Y===cur?'In progress':'Upcoming'}${last[Y]?` · last saved ${fmt(String(last[Y].at).slice(0,10),{month:'short',day:'numeric',year:'numeric'})}${last[Y].by?' by '+esc(last[Y].by):''}`:' · not backed up yet'}</div></div>
+    <button class="btn ${Y<cur&&!last[Y]?'gold':'ghost'}" data-bk="${Y}" ${S.dbStatus==='ready'&&!S.bkBusy?'':'disabled'}>Download</button></div>`).join('')}</div>
+    <div class="small" id="bkMsg" role="status" style="margin-top:8px"></div></section>
+  <section class="card"><h2>Keeping it safe</h2><div class="small">After it downloads, email the file to yourself or save it to Google Drive, so a copy lives outside the app. Back up the current season once a month, and the full season again in early January.</div></section></main>`;
+};
+document.addEventListener('click', async e=>{ const b=e.target.closest('[data-bk]'); if (!b || S.bkBusy) return; const Y=+b.dataset.bk;
+  S.bkBusy=true; document.querySelectorAll('[data-bk]').forEach(x=>x.disabled=true); const msg=live$('bkMsg'); msg.textContent='Starting…';
+  try{ const out=await buildSeason(Y, t=>{ msg.textContent=t; }); out.X.writeFile(out.wb, out.file);
+    msg.textContent=`Downloaded “${out.file}”.`;
+    const seasons={...((S.backups&&S.backups.seasons)||{}), [Y]:{at:new Date().toISOString(), by:S.meFull||''}};
+    S.backups={kind:'backups', seasons}; try{ await S.db.doc('settings/backups').set({kind:'backups', seasons}); }catch(err){}
+  }catch(err){ console.warn(err); msg.textContent='Couldn’t build the backup. Check your connection and try again.'; }
+  S.bkBusy=false; const keep=document.getElementById('bkMsg')?.textContent; render(); live$('bkMsg').textContent=keep||''; });
+
 /* ---------- router ---------- */
-const TABS = {home:'home',welcome:'more',ethics:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',backup:'more',welcome:'more',ethics:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
@@ -2226,7 +2353,7 @@ window.bootDB = (db, prof, fbUser) => {
     ensureLive(S.ciDate);
     db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
-    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; }); render(); }, ()=>{});
+    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; if (v && (v._id==='backups' || v.kind==='backups')) S.backups=v; }); render(); }, ()=>{});
     db.collection('ethics').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.ethics=m; S.ethicsLoaded=true; render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
@@ -2243,7 +2370,7 @@ window.bootDB = (db, prof, fbUser) => {
 <script type="module">
 /* ---------- Firebase: data + logins ---------- */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, createUserWithEmailAndPassword, sendEmailVerification } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const firebaseConfig = {
@@ -2266,7 +2393,8 @@ const auth2 = getAuth(app2);
 
 // same small API the app already uses: db.collection(path).onSnapshot / db.doc(path).set|delete
 const db = {
-  collection: p => ({ onSnapshot: (cb, err) => onSnapshot(collection(fs, p), s => cb({ docs: s.docs }), e => { console.warn(p, e.code); err && err(e); }) }),
+  collection: p => ({ onSnapshot: (cb, err) => onSnapshot(collection(fs, p), s => cb({ docs: s.docs }), e => { console.warn(p, e.code); err && err(e); }),
+    get: () => getDocs(collection(fs, p)).then(s => ({ docs: s.docs })) }),
   doc: p => ({ set: v => setDoc(doc(fs, p), JSON.parse(JSON.stringify(v))), delete: () => deleteDoc(doc(fs, p)) })
 };
 
