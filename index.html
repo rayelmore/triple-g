@@ -580,26 +580,27 @@ function payoutData(d, rows){
 }
 function payoutsHTML(d, rows){
   const P = payoutData(d, rows), q=P.q, k=P.k, c=P.c;
-  const line = (a,b,amt) => `<div class="li" style="grid-template-columns:44px 1fr auto"><span class="small muted">${a}</span><span>${b}</span><b>${money2(amt)}</b></div>`;
+  const line = (a,b,amt) => `<div class="li" style="grid-template-columns:44px 1fr auto"><span class="small muted">${a}</span><span>${b}</span><b>${money$(amt)}</b></div>`;
   const ctpWins = c ? c.C.filter(x=>x.list.length) : [];
   return `<section class="card"><div class="pagehead"><h2 style="margin:0">Payouts</h2><button class="btn ghost" id="poCopy" style="padding:6px 12px">Copy for group chat</button></div>
   <div class="small" id="poMsg" role="status"></div>
-  <h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money2(q.pot)}</span></h3>
+  <h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money$(q.pot)}</span></h3>
   <div class="list">${q.pays.length ? q.pays.map(x=>line(`${x.tie?'T':''}${x.place}`, `${esc(sname(x.pid))} <span class="small muted">${x.plus>=0?'+':''}${x.plus}</span>`, x.amt)).join('') : '<div class="muted small">No one with a quota scored this round.</div>'}</div>
-  ${k ? `<h3 style="margin:14px 0 2px">Skins <span class="small muted">· ${k.players} in · pot ${money2(k.pot)} · ${k.won} won</span></h3>
+  ${k ? `<h3 style="margin:14px 0 2px">Skins <span class="small muted">· ${k.players} in · pot ${money$(k.pot)} · ${k.won} won</span></h3>
   <div class="list">${k.winners.length ? k.winners.map(w=>line(`${w.n}×`, esc(sname(w.pid)), w.amt)).join('') : '<div class="muted small">No skins won — every low score was tied or over par.</div>'}</div>` : ''}
-  ${c ? `<h3 style="margin:14px 0 2px">Closest to the pin <span class="small muted">· ${c.players} in · pot ${money2(c.pot)}</span></h3>
-  <div class="list">${ctpWins.length ? ctpWins.map(x=>line(`#${x.h}`, `${esc(sname(x.list[0].pid))} <span class="small muted">${ftin(x.list[0])}</span>`, c.value)).join('') : '<div class="muted small">No closest-to-the-pin entries.</div>'}</div>` : ''}
+  ${c ? `<h3 style="margin:14px 0 2px">Closest to the pin <span class="small muted">· ${c.players} in · pot ${money$(c.pot)}</span></h3>
+  <div class="list">${ctpWins.length ? ctpWins.map(x=>line(`#${x.h}`, `${esc(sname(x.list[0].pid))} <span class="small muted">${ftin(x.list[0])}</span>`, c.pay)).join('') : '<div class="muted small">No closest-to-the-pin entries.</div>'}</div>` : ''}
+  <div class="small muted" style="margin-top:10px">All payouts are rounded to the nearest dollar ($0.50 and up rounds up).</div>
   ${!P.hasHoles ? '<div class="small muted" style="margin-top:10px">Skins and closest to the pin only show for rounds scored hole by hole in the app.</div>' : ''}
   ${!P.known ? '<div class="small muted" style="margin-top:6px">No side-game sign-ups were recorded for this round, so everyone who played is counted in the pots.</div>' : ''}
   </section>`;
 }
 function payoutText(d){
   const r = allRounds().find(x=>x.date===d), P = payoutData(d), q=P.q, k=P.k, c=P.c;
-  let t = `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money2(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money2(x.amt)}`).join('\n') || 'No winners');
-  if (k) t += `\n\nSkins (pot ${money2(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money2(w.amt)}`).join('\n') || 'No skins won');
-  if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money2(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money2(c.value)}`).join('\n') || 'No entries'); }
-  return t;
+  let t = `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners');
+  if (k) t += `\n\nSkins (pot ${money$(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money$(w.amt)}`).join('\n') || 'No skins won');
+  if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money$(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money$(c.pay)}`).join('\n') || 'No entries'); }
+  return t + '\n\nPayouts rounded to the nearest dollar.';
 }
 V.results = () => {
   const rounds = allRounds(); const d = S.resDate || rounds[rounds.length-1].date; const r = rounds.find(x=>x.date===d);
@@ -812,9 +813,11 @@ function skinsFor(d){
   const won = holes.filter(x=>x.win.length).length, pot = games().skins * players.length;
   const value = won ? pot/won : 0;
   const by = {}; holes.forEach(x=>x.win.forEach(p=>{ by[p]=(by[p]||0)+1; }));
-  return {holes, pot, won, value, players:players.length, winners:Object.entries(by).map(([pid,n])=>({pid,n,amt:n*value})).sort((a,b)=>b.n-a.n)};
+  return {holes, pot, won, value, players:players.length, winners:Object.entries(by).map(([pid,n])=>({pid,n,amt:payR(n*value)})).sort((a,b)=>b.n-a.n)};
 }
 const money2 = n => '$'+n.toFixed(2);
+/* 3G pays every payout to the nearest dollar: $0.50 and up rounds up, $0.49 and below rounds down */
+const payR = n => Math.floor((+n||0) + 0.5 + 1e-9);
 
 /* ---- Closest to the pin ---- */
 const inches = e => (+e.ft||0)*12 + (+e.inch||0);
@@ -829,7 +832,7 @@ function ctpFor(d, pars){
 function ctpMoney(d, pars){
   const C = ctpFor(d, pars), players = Object.values(S.live[d]||{}).filter(x=>x.holes && Object.keys(x.holes).length && inGameOn(d, x.pid, 'ctp')).length;
   const pot = games().ctpShare * players, won = C.filter(c=>c.list.length).length, value = won ? pot/won : 0;
-  return {C, pot, players, won, value, holes:C.length};
+  return {C, pot, players, won, value, pay:payR(value), holes:C.length};
 }
 function ensureLive(d){
   if (!S.db || !d || S.liveSubs[d]) return; S.liveSubs[d] = true;
@@ -847,16 +850,16 @@ function quotaGame(d, rows){
   const pot = share*inG.length, pays=[]; let i=0;
   while (i<field.length && i<split.length){
     const tied=field.filter(x=>x.plus===field[i].plus), pct=split.slice(i,i+tied.length).reduce((a,b)=>a+b,0);
-    tied.forEach(x=>pays.push({pid:x.pid, place:i+1, tie:tied.length>1, pct:Math.round(pct/tied.length*10)/10, plus:x.plus, pts:x.pts, amt:pot*pct/100/tied.length}));
+    tied.forEach(x=>pays.push({pid:x.pid, place:i+1, tie:tied.length>1, pct:Math.round(pct/tied.length*10)/10, plus:x.plus, pts:x.pts, amt:payR(pot*pct/100/tied.length)}));
     i+=tied.length;
   }
   return {pot, share, split, n:inG.length, pays, unranked: inG.length-field.length, ctpOnly: inAll.length-inG.length};
 }
 function quotaTable(d, rows){
   const q=quotaGame(d, rows);
-  return `<section class="card" style="padding:14px 12px"><div class="pagehead"><h2 style="margin:0">Quota Game</h2><span class="small muted">${q.n} in · pot ${money2(q.pot)}</span></div>
+  return `<section class="card" style="padding:14px 12px"><div class="pagehead"><h2 style="margin:0">Quota Game</h2><span class="small muted">${q.n} in · pot ${money$(q.pot)}</span></div>
   <div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th>Place</th><th>Player</th><th class="num">+/−</th><th class="num">Payout</th></tr></thead><tbody>
-  ${q.pays.length ? q.pays.map(p=>`<tr><td>${p.tie?'T':''}${p.place} <span class="muted small">(${p.pct}%${p.tie?' each':''})</span></td><td><b>${esc(sname(p.pid))}</b></td><td class="num">${plusHtml(p.plus)}</td><td class="num">${money2(p.amt)}</td></tr>`).join('')
+  ${q.pays.length ? q.pays.map(p=>`<tr><td>${p.tie?'T':''}${p.place} <span class="muted small">(${p.pct}%${p.tie?' each':''})</span></td><td><b>${esc(sname(p.pid))}</b></td><td class="num">${plusHtml(p.plus)}</td><td class="num">${money$(p.amt)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="muted">No scores yet.</td></tr>'}
   </tbody></table></div>
   <div class="small muted" style="margin-top:6px">${money$(q.share)} of each ${money$(games().ctp)} goes here, paid ${q.split.join(' / ')}% to the top 3 over quota. Ties share their places.${q.ctpOnly?` ${q.ctpOnly} player${q.ctpOnly>1?'s':''} without a quota ${q.ctpOnly>1?'are':'is'} in closest to the pin only (${money$(games().ctpShare)}) and not in this pot.`:''}</div></section>`;
@@ -868,22 +871,22 @@ function skinsTable(d){
   ${k.holes.map(x=>`<tr class="${x.win.length?'won':''}"><td class="num">${x.h}</td><td class="num">${x.low??'—'}</td><td>${x.win.map(p=>`<b>${esc(sname(p))}</b>`).join('')}</td><td class="num">${x.win.length?money2(k.value):''}</td><td class="wrap">${x.ties.map(p=>esc(sname(p))).join(', ')}${x.solo.length?`<span class="muted">${esc(sname(x.solo[0]))} – over par, no skin</span>`:''}</td></tr>`).join('')}
   </tbody></table></div>
   ${k.winners.length?`<div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th>Player</th><th class="num">Skins</th><th class="num">Winnings</th></tr></thead><tbody>
-  ${k.winners.map(w=>`<tr><td>${esc(sname(w.pid))}</td><td class="num">${w.n}</td><td class="num">${money2(w.amt)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${k.winners.map(w=>`<tr><td>${esc(sname(w.pid))}</td><td class="num">${w.n}</td><td class="num">${money$(w.amt)}</td></tr>`).join('')}</tbody></table></div>`:''}
   <div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th colspan="2">Skins Game Settings</th></tr></thead><tbody>
     <tr><td>Calculation mode</td><td>Gross score</td></tr><tr><td>Max winners per hole</td><td>1</td></tr><tr><td>Skin must be at least</td><td>Par</td></tr>
-    <tr><td>Pot split</td><td>Even split across wins</td></tr><tr><td>Total pot</td><td>${money2(k.pot)} (${k.players} × ${money$(games().skins)})</td></tr></tbody></table></div></section>`;
+    <tr><td>Pot split</td><td>Even split across wins</td></tr><tr><td>Total pot</td><td>${money$(k.pot)} (${k.players} × ${money$(games().skins)})</td></tr></tbody></table></div></section>`;
 }
 function contestsTable(d, pars){
   const M = ctpMoney(d, pars), C = M.C;
   const by = {}; C.forEach(c=>{ if (c.list.length){ const p=c.list[0].pid; by[p]=(by[p]||0)+1; } });
   return `<section class="card" style="padding:14px 12px"><div class="pagehead"><h2 style="margin:0">Closest to the Pin</h2><span class="small muted">${M.players} in · pot ${money$(M.pot)}</span></div>
   <div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th class="num">Hole</th><th>Leader</th><th class="num">Distance</th><th class="num">Value</th></tr></thead><tbody>
-  ${C.length ? C.map(c=> c.list.length ? c.list.map((e,i)=>`<tr class="${i?'sub':'lead'}"><td class="num">${i?'':c.h}</td><td>${i?esc(sname(e.pid)):`<b>${esc(sname(e.pid))}</b>`}</td><td class="num">${ftin(e)}</td><td class="num">${i?'':money2(M.value)}</td></tr>`).join('')
+  ${C.length ? C.map(c=> c.list.length ? c.list.map((e,i)=>`<tr class="${i?'sub':'lead'}"><td class="num">${i?'':c.h}</td><td>${i?esc(sname(e.pid)):`<b>${esc(sname(e.pid))}</b>`}</td><td class="num">${ftin(e)}</td><td class="num">${i?'':money$(M.pay)}</td></tr>`).join('')
       : `<tr class="lead"><td class="num">${c.h}</td><td class="muted">No one yet</td><td></td><td></td></tr>`).join('')
     : '<tr><td colspan="4" class="muted">Add the course pars to set up the par 3 contests.</td></tr>'}
   </tbody></table></div>
   ${Object.keys(by).length?`<div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th>Player</th><th class="num">CTPs</th><th class="num">Winnings</th></tr></thead><tbody>
-  ${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<tr><td>${esc(sname(p))}</td><td class="num">${n}</td><td class="num">${money2(n*M.value)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<tr><td>${esc(sname(p))}</td><td class="num">${n}</td><td class="num">${money$(payR(n*M.value))}</td></tr>`).join('')}</tbody></table></div>`:''}
   <div class="small muted" style="margin-top:6px">${money$(games().ctpShare)} of each ${money$(games().ctp)} goes here. The pot is split evenly among the par 3s that have a winner.</div></section>`;
 }
 V.leaderboard = () => {
