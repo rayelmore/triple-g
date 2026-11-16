@@ -2625,6 +2625,12 @@ const db = {
   doc: p => ({ set: v => setDoc(doc(fs, p), JSON.parse(JSON.stringify(v))), delete: () => deleteDoc(doc(fs, p)) })
 };
 
+/* password emails carry a "Continue" button back to the app (falls back to a plain email if Firebase hasn't approved the address) */
+const APP_URL = location.origin + '/';
+async function sendReset(a, email){
+  try{ return await sendPasswordResetEmail(a, email, { url: APP_URL }); }
+  catch(err){ if (/continue-uri|unauthorized-domain|invalid-url|argument-error/.test(err?.code||'')) return sendPasswordResetEmail(a, email); throw err; }
+}
 const $ = s => document.querySelector(s);
 const gate = $('#gate');
 function showGate(html){ gate.innerHTML = html; gate.hidden = false; document.body.classList.add('gated'); }
@@ -2652,7 +2658,7 @@ gate.addEventListener('submit', async e=>{
 gate.addEventListener('click', async e=>{
   const t=e.target.closest('button'); if (!t) return;
   if (t.id==='gForgot'){ const email=$('#gEmail')?.value.trim(); if (!email){ $('#gMsg').textContent='Type your email above first, then tap this again.'; return; }
-    try{ await sendPasswordResetEmail(auth, email); $('#gMsg').textContent=`If ${email} has a Triple-G login, an email to set your password is on its way. Check spam too.`; }catch(err){ $('#gMsg').textContent=em(err); } }
+    try{ await sendReset(auth, email); $('#gMsg').textContent=`If ${email} has a Triple-G login, an email to set your password is on its way. Check spam too.`; }catch(err){ $('#gMsg').textContent=em(err); } }
   else if (t.id==='gSetup'){ const email=$('#gEmail').value.trim().toLowerCase(), pass=$('#gPass').value;
     if (!BOOTSTRAP[email]){ $('#gMsg').textContent='Leader setup is only for the group’s organizer. Everyone else: ask a leader to add you, then use "Forgot password / first time?".'; return; }
     try{ const c=await createUserWithEmailAndPassword(auth, email, pass); await sendEmailVerification(c.user); }catch(err){ $('#gMsg').textContent=em(err); } }
@@ -2679,7 +2685,7 @@ async function start(user){
     showGate(`<div class="gbox"><h1>Not set up yet</h1><p>${esc(email)} is signed in, but it isn’t linked to a Triple-G member. Ask a leader to add you in Admin → Members.</p><button class="btn" id="gOut">Sign out</button></div>`); return;
   }
   hideGate();
-  window.TG_FB = { auth, auth2, fs, doc, setDoc, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, uid:user.uid, email };
+  window.TG_FB = { auth, auth2, fs, doc, setDoc, createUserWithEmailAndPassword, sendPasswordResetEmail: sendReset, signOut, uid:user.uid, email };
   if (!booted){ booted=true; window.bootDB(db, prof, user); } else location.reload();
 }
 onAuthStateChanged(auth, user => { if (booted && !user){ location.reload(); return; } start(user); });
