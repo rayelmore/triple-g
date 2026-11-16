@@ -1801,7 +1801,8 @@ function loginBox(p){
       <div class="row" style="margin-top:6px"><select id="luRole" aria-label="Role"><option value="member"${u.role==='member'?' selected':''}>Member</option><option value="admin"${u.role==='admin'?' selected':''}>Leader (admin)</option><option value="disabled"${u.role==='disabled'?' selected':''}>Disabled (can't sign in)</option></select>
         <button class="btn ghost" id="luSave" data-uid="${u._id}">Update role</button><button class="btn ghost" id="luReset" data-email="${esc(u.email)}">Resend password email</button></div>`
     : `<div class="small muted">No login yet. Enter their email and we’ll send them a link to set their password.</div>
-      <div class="row" style="margin-top:6px;flex-wrap:nowrap"><input type="email" id="luEmail" placeholder="their@email.com" value="${esc(p.email||'')}" style="flex:1;min-width:0" aria-label="Login email"><select id="luRole" aria-label="Role"><option value="member">Member</option><option value="admin">Leader</option></select></div>
+      <label class="small" style="margin-top:6px">Login email<input type="email" id="luEmail" placeholder="their@email.com" value="${esc(p.email||'')}" style="width:100%;box-sizing:border-box" aria-label="Login email"></label>
+      <label class="small">Role<select id="luRole" aria-label="Role" style="width:100%"><option value="member">Member</option><option value="admin">Leader</option></select></label>
       <button class="btn gold" id="luCreate" data-pid="${p.id}" style="margin-top:6px">Create login &amp; send invite</button>`}
     <div class="small" id="luMsg" role="status">${S.luNote&&S.luNote.pid===p.id?esc(S.luNote.t):''}</div></div>`;
 }
@@ -1815,8 +1816,8 @@ document.addEventListener('click', async e=>{
     const nd={...u, role, by:S.meFull, at:new Date().toISOString()}; delete nd._id;
     try{ await S.db.doc('users/'+b.dataset.uid).set(nd); live$('luMsg').textContent='Role updated.'; }catch(err){ live$('luMsg').textContent=noWrite; } return; }
   if (b.id==='luCreate'){
-    const email=($('#luEmail').value||'').trim().toLowerCase(), role=$('#luRole').value, pid=b.dataset.pid;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ live$('luMsg').textContent='Enter a valid email.'; return; }
+    const email=(($('#luEmail').value||'').trim() || ($('#amEmail')?.value||'').trim()).toLowerCase(), role=$('#luRole').value, pid=b.dataset.pid;   // falls back to the Email field above
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ live$('luMsg').textContent='Enter the member’s email in the Login email box above.'; return; }
     if (Object.values(S.users||{}).some(u=>u.email===email)){ live$('luMsg').textContent='That email is already linked to a member.'; return; }
     b.disabled=true; live$('luMsg').textContent='Creating login…';
     let step='create', uid='';
@@ -1839,6 +1840,8 @@ document.addEventListener('click', async e=>{
   }
 });
 
+
+document.addEventListener('input', e=>{ if (e.target.id==='amEmail'){ const l=document.getElementById('luEmail'); if (l && (!l.value || l.dataset.mirror)){ l.value=e.target.value; l.dataset.mirror='1'; } } });
 
 /* ---- New Member Welcome Letter (leaders update it each year; stored in settings/welcome) ---- */
 const WELCOME_DEFAULT = {year:2026, body:`# Welcome to Triple-G (Gentlemen Golf Group)
