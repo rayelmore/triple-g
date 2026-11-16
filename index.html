@@ -243,6 +243,7 @@ main>*{min-width:0}
 .askbox{background:var(--surface);color:var(--ink);border-radius:16px;padding:18px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .askbox p{margin:0 0 14px;font-size:17px}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
+.linkbtn.danger{color:var(--bad)}
 .gchips{display:inline-flex;gap:6px;margin-left:8px;flex-wrap:wrap}
 .gchip{border:1.5px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:3px 10px;font:700 12.5px var(--body);cursor:pointer;text-decoration:line-through}
 .gchip[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff;text-decoration:none}
@@ -550,6 +551,7 @@ V.home = () => {
       ${tile('#standings','trophy','Standings','2026 season')}
       ${isAdmin() ? tile('#more','shield','Leadership','Requests, payouts & more') : tile('#access','shield','My Account','Password & sign out')}
     </div>
+    <a class="btn big wbtn" href="#side" style="background:var(--gold);color:var(--green-dark,#0b3d2e)">${ICON.flag||ICON.card} Side Rounds${sideToday().length?` <span class="pill good" style="margin-left:6px">${sideToday().length} today</span>`:''}</a>
     <a class="btn ghost big wbtn" href="#welcome">${ICON.card} New Member Welcome Letter</a>
     <a class="btn ghost big wbtn" href="#ethics">${ICON.check} Code of Ethics</a>
   </main>`;
@@ -582,7 +584,7 @@ function payoutsHTML(d, rows){
   const P = payoutData(d, rows), q=P.q, k=P.k, c=P.c;
   const line = (a,b,amt) => `<div class="li" style="grid-template-columns:44px 1fr auto"><span class="small muted">${a}</span><span>${b}</span><b>${money$(amt)}</b></div>`;
   const ctpWins = c ? c.C.filter(x=>x.list.length) : [];
-  return `<section class="card"><div class="pagehead"><h2 style="margin:0">Payouts</h2><button class="btn ghost" id="poCopy" style="padding:6px 12px">Copy for group chat</button></div>
+  return `<section class="card"><div class="pagehead"><h2 style="margin:0">Payouts</h2><button class="btn ghost" id="poCopy" data-d="${esc(d)}" style="padding:6px 12px">Copy for group chat</button></div>
   <div class="small" id="poMsg" role="status"></div>
   <h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money$(q.pot)}</span></h3>
   <div class="list">${q.pays.length ? q.pays.map(x=>line(`${x.tie?'T':''}${x.place}`, `${esc(sname(x.pid))} <span class="small muted">${x.plus>=0?'+':''}${x.plus}</span>`, x.amt)).join('') : '<div class="muted small">No one with a quota scored this round.</div>'}</div>
@@ -597,8 +599,8 @@ function payoutsHTML(d, rows){
   </section>`;
 }
 function payoutText(d){
-  const r = allRounds().find(x=>x.date===d), P = payoutData(d), q=P.q, k=P.k, c=P.c;
-  let t = `3G payouts · ${fmt(d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners');
+  const sr = SIDE_KEY(d) ? sideRound(d) : null, r = sr || allRounds().find(x=>x.date===d), P = payoutData(d, sr ? sidePayRows(d) : undefined), q=P.q, k=P.k, c=P.c;
+  let t = `3G ${sr?'side round ':''}payouts · ${fmt(sr?sr.date:d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners');
   if (k) t += `\n\nSkins (pot ${money$(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money$(w.amt)}`).join('\n') || 'No skins won');
   if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money$(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money$(c.pay)}`).join('\n') || 'No entries'); }
   const R=roundDiff(P);
@@ -689,12 +691,14 @@ const money$ = n => '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimu
 const PBY = (()=>{ const m={}; SEED.players.forEach(p=>m[p.id]=p); return m; })();
 const pname = id => PBY[id] ? shortName(PBY[id].name) : id;
 const curQuota = id => { const p = PBY[id]; return p ? stats(p).quota : null; };
-const quotaOn = (id,d) => { const p = PBY[id]; return p ? quotaBefore(p, scoresFor(p), d) : null; };
+const quotaOn = (id,d) => { const p = PBY[id]; if (SIDE_KEY(d)) d = sideRound(d)?.date || todayISO(); return p ? quotaBefore(p, scoresFor(p), d) : null; };
 const dname = id => { if (!PBY[id]) return id; const w = shortName(PBY[id].name).replace(/["“”]/g,'').split(' ').filter(Boolean); return w.length>1 ? `${w[0]} ${w[w.length-1][0]}.` : w[0]; };
 const noWrite = 'Could not save. This is a leaders-only change.';
 const noWriteC = 'Could not save. Check your connection, or you may not have permission for this.';
 function roundDate(){ return S.ciDate || (nextRound()||{}).date || todayISO(); }
-function schedFor(d){ return SEED.schedule.find(r=>r.date===d) || null; }
+const SIDE_KEY = d => typeof d==='string' && d.slice(0,3)==='sr:';
+const sideRound = d => (S.side||{})[String(d).slice(3)] || null;
+function schedFor(d){ if (SIDE_KEY(d)) return sideRound(d); return SEED.schedule.find(r=>r.date===d) || null; }
 function teeAt(base, i, step){ const [h,m]=teeHour(base); const t=h*60+m+i*step; const hh=Math.floor(t/60), mm=t%60; return `${((hh+11)%12)+1}:${String(mm).padStart(2,'0')} ${hh>=12?'PM':'AM'}`; }
 function dbNote(){ return S.dbStatus==='ready' ? '' : S.dbStatus==='connecting' ? '<div class="banner">Connecting to the shared scorebook…</div>' : '<div class="banner">Not connected. Check your internet and reload.</div>'; }
 function back(){ return '<a href="#more" class="small">← More</a>'; }
@@ -779,23 +783,27 @@ const SNAME = (()=>{ const m={}, count={};
   SEED.players.forEach(p=>{ const b=base(p); count[b]=(count[b]||0)+1; });
   SEED.players.forEach(p=>{ const b=base(p); const w=shortName(p.name).split(' '); m[p.id] = count[b]>1 ? `${b} ${w[w.length-1][0]}.` : b; });
   return m; })();
-const sname = id => SNAME[id] || id;
+const SIDEN = {};   // names of side-round guests (kept out of the main roster)
+const sname = id => SNAME[id] || SIDEN[id] || id;
 
 /* ---- Game settings (skins buy-in) ---- */
 // The $5 game: $2 of each $5 funds closest to the pin, $3 funds the quota game paid 60/30/10 (3G rules, Nov 8 2026)
 const GAME_DEFAULT = {skins:10, ctp:5, ctpShare:2, qSplit:[60,30,10]};
 function games(){ return {...GAME_DEFAULT, ...(S.games||{})}; }
+function gamesFor(d){ if (SIDE_KEY(d)){ const r=sideRound(d), g=games(); return {...g, ...((r&&r.buyIn)||{})}; } return games(); }
 
 /* ---- Skins (Scrolf settings: gross score, 1 winner per hole, skin must be par or better, even split across wins, no carryover) ---- */
 /* who was in each side game on a given date (current round: live check-ins; past rounds: saved check-ins) */
 S.pastCi = {};
 function ensurePastCi(d){
+  if (SIDE_KEY(d)) return;
   if (!S.db || !d || d===S.ciDate || S.pastCi[d]) return; const c = S.pastCi[d] = {players:null, guests:null};
   S.db.collection(`checkins/${d}/players`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); c.players=m; render(); }, ()=>{ c.players={}; render(); });
   S.db.collection(`checkins/${d}/guests`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id) m[v.id]=v; }); c.guests=m; render(); }, ()=>{ c.guests={}; render(); });
 }
-function signupsKnown(d){ if (d===S.ciDate) return true; const c=S.pastCi[d]; return !!(c && c.players && c.guests && (Object.keys(c.players).length || Object.keys(c.guests).length)); }
+function signupsKnown(d){ if (d===S.ciDate || SIDE_KEY(d)) return true; const c=S.pastCi[d]; return !!(c && c.players && c.guests && (Object.keys(c.players).length || Object.keys(c.guests).length)); }
 function inGameOn(d, pid, g){
+  if (SIDE_KEY(d)){ const v=(S.live[d]||{})[pid]; return !!v && v[g]!==false; }
   if (d===S.ciDate) return inGame(pid, g);
   if (!signupsKnown(d)) return true;            // no sign-up records for that round: count everyone who played
   const c=S.pastCi[d], v=c.players[pid] || c.guests[pid];
@@ -812,7 +820,7 @@ function skinsFor(d){
     const okPar = !pars || low <= pars[h-1];
     holes.push({h, low, over: !okPar, win: at.length===1 && okPar ? at : [], ties: at.length>1?at:[], solo: at.length===1 && !okPar ? at : []});
   }
-  const won = holes.filter(x=>x.win.length).length, pot = games().skins * players.length;
+  const won = holes.filter(x=>x.win.length).length, pot = gamesFor(d).skins * players.length;
   const value = won ? pot/won : 0;
   const by = {}; holes.forEach(x=>x.win.forEach(p=>{ by[p]=(by[p]||0)+1; }));
   return {holes, pot, won, value, players:players.length, winners:Object.entries(by).map(([pid,n])=>({pid,n,amt:payR(n*value)})).sort((a,b)=>b.n-a.n)};
@@ -841,10 +849,11 @@ function ctpFor(d, pars){
 
 function ctpMoney(d, pars){
   const C = ctpFor(d, pars), players = Object.values(S.live[d]||{}).filter(x=>x.holes && Object.keys(x.holes).length && inGameOn(d, x.pid, 'ctp')).length;
-  const pot = games().ctpShare * players, won = C.filter(c=>c.list.length).length, value = won ? pot/won : 0;
+  const pot = gamesFor(d).ctpShare * players, won = C.filter(c=>c.list.length).length, value = won ? pot/won : 0;
   return {C, pot, players, won, value, pay:payR(value), holes:C.length};
 }
 function ensureLive(d){
+  if (SIDE_KEY(d)){ sideSub(d.slice(3)); return; }
   if (!S.db || !d || S.liveSubs[d]) return; S.liveSubs[d] = true;
   S.db.collection(`live/${d}/players`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.live[d]=m; render(); }, ()=>{});
   S.db.collection(`ctp/${d}/entries`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid&&v.hole) m[v.hole+'_'+v.pid]=v; }); S.ctp[d]=m; render(); }, ()=>{});
@@ -853,7 +862,7 @@ function ensureLive(d){
 /* ---- Live Leaderboard + Skins + Contests ---- */
 /* ---- Quota game ($3 of the $5): top 3 points over quota ---- */
 function quotaGame(d, rows){
-  const G=games(), share=G.ctp-G.ctpShare, split=G.qSplit||[60,30,10];
+  const G=gamesFor(d), share=G.ctp-G.ctpShare, split=G.qSplit||[60,30,10];
   const inAll = rows.filter(r=>inGameOn(d, r.pid, 'ctp'));
   const inG = inAll.filter(r=>quotaOn(r.pid, d)!==null);          // no quota = closest to the pin only, not in the quota pot
   const field = inG.filter(r=>r.plus!==null).sort((a,b)=>b.plus-a.plus);
@@ -872,7 +881,7 @@ function quotaTable(d, rows){
   ${q.pays.length ? q.pays.map(p=>`<tr><td>${p.tie?'T':''}${p.place} <span class="muted small">(${p.pct}%${p.tie?' each':''})</span></td><td><b>${esc(sname(p.pid))}</b></td><td class="num">${plusHtml(p.plus)}</td><td class="num">${money$(p.amt)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="muted">No scores yet.</td></tr>'}
   </tbody></table></div>
-  <div class="small muted" style="margin-top:6px">${money$(q.share)} of each ${money$(games().ctp)} goes here, paid ${q.split.join(' / ')}% to the top 3 over quota. Ties share their places.${q.ctpOnly?` ${q.ctpOnly} player${q.ctpOnly>1?'s':''} without a quota ${q.ctpOnly>1?'are':'is'} in closest to the pin only (${money$(games().ctpShare)}) and not in this pot.`:''}</div></section>`;
+  <div class="small muted" style="margin-top:6px">${money$(q.share)} of each ${money$(gamesFor(d).ctp)} goes here, paid ${q.split.join(' / ')}% to the top 3 over quota. Ties share their places.${q.ctpOnly?` ${q.ctpOnly} player${q.ctpOnly>1?'s':''} without a quota ${q.ctpOnly>1?'are':'is'} in closest to the pin only (${money$(gamesFor(d).ctpShare)}) and not in this pot.`:''}</div></section>`;
 }
 function skinsTable(d){
   const k = skinsFor(d);
@@ -884,7 +893,7 @@ function skinsTable(d){
   ${k.winners.map(w=>`<tr><td>${esc(sname(w.pid))}</td><td class="num">${w.n}</td><td class="num">${money$(w.amt)}</td></tr>`).join('')}</tbody></table></div>`:''}
   <div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th colspan="2">Skins Game Settings</th></tr></thead><tbody>
     <tr><td>Calculation mode</td><td>Gross score</td></tr><tr><td>Max winners per hole</td><td>1</td></tr><tr><td>Skin must be at least</td><td>Par</td></tr>
-    <tr><td>Pot split</td><td>Even split across wins</td></tr><tr><td>Total pot</td><td>${money$(k.pot)} (${k.players} × ${money$(games().skins)})</td></tr></tbody></table></div></section>`;
+    <tr><td>Pot split</td><td>Even split across wins</td></tr><tr><td>Total pot</td><td>${money$(k.pot)} (${k.players} × ${money$(gamesFor(d).skins)})</td></tr></tbody></table></div></section>`;
 }
 function contestsTable(d, pars){
   const M = ctpMoney(d, pars), C = M.C;
@@ -897,7 +906,7 @@ function contestsTable(d, pars){
   </tbody></table></div>
   ${Object.keys(by).length?`<div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th>Player</th><th class="num">CTPs</th><th class="num">Winnings</th></tr></thead><tbody>
   ${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<tr><td>${esc(sname(p))}</td><td class="num">${n}</td><td class="num">${money$(payR(n*M.value))}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <div class="small muted" style="margin-top:6px">${money$(games().ctpShare)} of each ${money$(games().ctp)} goes here. The pot is split evenly among the par 3s that have a winner.</div></section>`;
+  <div class="small muted" style="margin-top:6px">${money$(gamesFor(d).ctpShare)} of each ${money$(gamesFor(d).ctp)} goes here. The pot is split evenly among the par 3s that have a winner.</div></section>`;
 }
 V.leaderboard = () => {
   const d = roundDate(), sch = schedFor(d), L = S.live[d] || {};
@@ -1461,7 +1470,7 @@ document.addEventListener('click', e=>{ const a=e.target.closest('[data-resgo]')
 document.addEventListener('click', async e=>{
   const b = e.target.closest('button,[data-exf]'); if (!b) return;
   if (b.id==='lbSave'){ b.disabled=true; await saveLive(); b.disabled=false; }
-  else if (b.id==='poCopy' || b.id==='pdCopy'){ const txt = b.id==='poCopy'?payoutText(S.resDate||allRounds().slice(-1)[0].date):pairText(); const m=live$(b.id==='poCopy'?'poMsg':'pdMsg'); try{ await navigator.clipboard.writeText(txt); m.textContent='Copied.'; }catch(err){ m.textContent='Copy not allowed here. Select and copy: '+txt; } }
+  else if (b.id==='poCopy' || b.id==='pdCopy'){ const txt = b.id==='poCopy'?payoutText(b.dataset.d||S.resDate||allRounds().slice(-1)[0].date):pairText(); const m=live$(b.id==='poCopy'?'poMsg':'pdMsg'); try{ await navigator.clipboard.writeText(txt); m.textContent='Copied.'; }catch(err){ m.textContent='Copy not allowed here. Select and copy: '+txt; } }
   else if (b.dataset.gen){ const st=ptState(); const ids=playingIds().filter(id=>PBY[id]); if (!ids.length){ live$('ptMsg').textContent='Nobody has checked in yet. Add players below.'; return; } st.groups=makeGroups(ids,b.dataset.gen); st.dirty=true; render(); }
   else if (b.dataset.rm){ const st=ptState(); st.groups=st.groups.map(g=>g.filter(x=>x!==b.dataset.rm)).filter(g=>g.length); st.dirty=true; render(); }
   else if (b.id==='ptNewGrp'){ const st=ptState(); if (!st.groups.length || st.groups[st.groups.length-1].length) st.groups.push([]); render(); }
@@ -2064,6 +2073,18 @@ async function buildSeason(Y, onStep){
   R.filter(p=>!p.guest || played.includes(p)).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name))).forEach(p=>{ const e=(S.ethics||{})[p.id];
     me.push([shortName(p.name), nick(p.name), p.guest?'Guest':'Member', p.inactive?'No':'Yes', p.phone||'', p.email||'', rounds.filter(r=>typeof scoresFor(p)[r.date]==='number').length, endQ(p)??'', e?String(e.at).slice(0,10):'']); });
   sheets.push(['Members', me]);
+  // Side rounds (kept separate from Wednesday)
+  const sr=[['Date','Course','Player','Member or guest',...Array.from({length:18},(_,i)=>'H'+(i+1)),'Gross','To par','Points','Skins ($)','Closest to pin ($)','Quota game ($)','Total won ($)']];
+  for (const R2 of Object.values(S.side||{}).filter(x=>x&&inY(x.date)&&x.date<=today).sort((a,b)=>a.date.localeCompare(b.date))){
+    const k='sr:'+R2.id; onStep && onStep(`Gathering side round ${fmt(R2.date)}…`);
+    if (!S.sideSubs[R2.id]){ const [pl, ct] = await Promise.all([bkGet(`side/${R2.id}/players`), bkGet(`side/${R2.id}/ctp`)]); const m={}; pl.forEach(v=>{ if(v&&v.pid){ m[v.pid]=v; if (v.guest) SIDEN[v.pid]=`${v.first||''} ${String(v.last||'')[0]||''}.`.trim(); } }); S.live[k]=m; const c={}; ct.forEach(v=>{ if(v&&v.pid&&v.hole) c[v.hole+'_'+v.pid]=v; }); S.ctp[k]=c; }
+    const rows2=sideRows(k), P=payoutData(k, sidePayRows(k)), won={};
+    const add=(pid,f,a)=>{ won[pid]=won[pid]||{s:0,c:0,q:0}; won[pid][f]+=a; };
+    P.q.pays.forEach(x=>add(x.pid,'q',x.amt)); if (P.k) P.k.winners.forEach(w=>add(w.pid,'s',w.amt)); if (P.c) P.c.C.filter(x=>x.list.length).forEach(x=>add(x.list[0].pid,'c',P.c.pay));
+    rows2.sort((a,b)=>a.toPar-b.toPar).forEach(x=>{ const w=won[x.pid]||{s:0,c:0,q:0}, v=(S.live[k]||{})[x.pid]||{};
+      sr.push([R2.date, R2.course, v.guest?`${v.first||''} ${v.last||''}`.trim():nm(x.pid), v.guest?'Guest':'Member', ...Array.from({length:18},(_,i)=>+x.holes[i+1]||''), x.gross??'', x.toPar??'', x.pts, w.s||'', w.c||'', w.q||'', (w.s+w.c+w.q)||'']); });
+  }
+  sheets.push(['Side rounds', sr]);
   // Summary (first tab)
   const G=games(), done = +Y < new Date().getFullYear();
   const sum=[[`Triple-G Season ${Y} Backup`],[],['Season',`January 1 – December 31, ${Y}`],['Status', done?'Season closed':`In progress (through ${fmt(today,{month:'short',day:'numeric',year:'numeric'})})`],
@@ -2098,8 +2119,206 @@ document.addEventListener('click', async e=>{ const b=e.target.closest('[data-bk
   }catch(err){ console.warn(err); msg.textContent='Couldn’t build the backup. Check your connection and try again.'; }
   S.bkBusy=false; const keep=document.getElementById('bkMsg')?.textContent; render(); live$('bkMsg').textContent=keep||''; });
 
+
+/* ================= Side Rounds (ad hoc Monday/Friday rounds) =================
+   Stored only under side/{id}: players (one doc each: games + hole scores) and ctp entries.
+   Nothing here is written to rounds/, live/, checkins/ or ctp/, so Wednesday scores, quotas,
+   payouts and backups are never touched. Same scoring rules; Wednesday quotas are read-only. */
+S.side = {}; S.sideSubs = {};
+function sideSub(rid){
+  if (!S.db || !rid || S.sideSubs[rid]) return; S.sideSubs[rid]=true; const k='sr:'+rid;
+  S.db.collection(`side/${rid}/players`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid){ m[v.pid]=v; if (v.guest) SIDEN[v.pid]=`${v.first||''} ${String(v.last||'')[0]||''}.`.replace(/ \.$/,'').trim(); } }); S.live[k]=m; render(); }, ()=>{ S.live[k]=S.live[k]||{}; render(); });
+  S.db.collection(`side/${rid}/ctp`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid&&v.hole) m[v.hole+'_'+v.pid]=v; }); S.ctp[k]=m; render(); }, ()=>{});
+}
+const sideKey = () => 'sr:'+(S.sideId||'');
+const sideList = () => Object.values(S.side||{}).filter(r=>r && r.id && r.date).sort((a,b)=>b.date.localeCompare(a.date) || String(b.time||'').localeCompare(String(a.time||'')));
+const sideToday = () => sideList().filter(r=>r.date===todayISO());
+const sideCan = r => isAdmin() || (r && r.byPid && r.byPid===meId());
+const sidePl = id => { const v=(S.live[sideKey()]||{})[id]; return v; };
+const sideFull = id => { const v=sidePl(id); return v&&v.guest ? `${v.first||''} ${v.last||''}`.trim() : (PBY[id]?shortName(PBY[id].name):id); };
+const canEditPl = (r, v) => sideCan(r) || (v && (v.pid===meId() || v.host===meId()));
+function sideRows(k){ const r=sideRound(k), pars=courseInfo(r?.course).pars;
+  return Object.values(S.live[k]||{}).filter(x=>x.holes && Object.keys(x.holes).length).map(x=>{ const t=pars?cardTotals(x.holes,pars):{pts:x.pts||0,thru:x.thru||0,gross:x.gross,toPar:x.toPar}; const q=quotaOn(x.pid,k); return {...x, ...t, q, plus:q===null?null:t.pts-q}; }); }
+const sidePayRows = k => sideRows(k).map(x=>({p:PBY[x.pid]||{id:x.pid}, v:x.pts, plus:x.plus}));
+const sideWhen = r => `${fmt(r.date,{weekday:'short',month:'short',day:'numeric'})}${r.time?' · '+fmtTee(r.time):''}`;
+
+V.side = () => {
+  const L=sideList(), t=todayISO(), up=L.filter(r=>r.date>=t).reverse(), past=L.filter(r=>r.date<t), more=S.sideMore?past:past.slice(0,15);
+  const card = r => { sideSub(r.id); const n=Object.keys(S.live['sr:'+r.id]||{}).length;
+    return `<a class="li" href="#sround" data-sopen="${esc(r.id)}" style="grid-template-columns:1fr auto;text-decoration:none;color:inherit"><div><div class="name">${esc(r.course||'Course')}</div><div class="small muted">${sideWhen(r)}${r.teeBox?' · '+esc(r.teeBox):''} · ${n} player${n===1?'':'s'}${r.by?' · started by '+esc(r.by):''}</div></div><span class="pill ${r.date===t?'good':''}">${r.date===t?'Today':r.date>t?'Upcoming':'Open'}</span></a>`; };
+  return `<main><a href="#home" class="small">← Home</a><div class="pagehead"><h1>Side Rounds</h1></div>
+  <div class="muted">Ad hoc rounds on other days (like Mondays and Fridays). Same scoring, skins and closest to the pin as Wednesday, but nothing here counts toward Wednesday scores or quotas.</div>${dbNote()}
+  <a class="btn big" href="#snew" data-snew="1" style="display:block;text-align:center;margin:12px 0">+ Start a side round</a>
+  <section class="card"><h2>Today &amp; upcoming</h2><div class="list">${up.length?up.map(card).join(''):'<div class="muted small">No side rounds scheduled. Tap “Start a side round” to set one up.</div>'}</div></section>
+  ${past.length?`<section class="card"><h2>Past side rounds</h2><div class="list">${more.map(r=>`<a class="li" href="#sround" data-sopen="${esc(r.id)}" style="grid-template-columns:1fr auto;text-decoration:none;color:inherit"><div><div class="name">${esc(r.course||'Course')}</div><div class="small muted">${sideWhen(r)}</div></div><span class="small muted">View</span></a>`).join('')}</div>
+    ${past.length>more.length?'<button class="linkbtn" id="sMore">Show all past side rounds</button>':''}</section>`:''}</main>`;
+};
+
+V.snew = () => {
+  const ed = S.sEdit ? sideRound('sr:'+S.sEdit) : null, g=games(), b={...g, ...((ed&&ed.buyIn)||{})};
+  return `<main><a href="${ed?'#sround':'#side'}" class="small">← ${ed?'Back to round':'Side Rounds'}</a><div class="pagehead"><h1>${ed?'Round settings':'Start a side round'}</h1></div>${dbNote()}
+  <section class="card"><div class="form">
+    <label>Date<input type="date" id="snDate" value="${esc(ed?.date||todayISO())}"></label>
+    <label>Course<input type="text" id="snCourse" list="snCourses" value="${esc(ed?.course||'')}" autocomplete="off" placeholder="Start typing a course"><datalist id="snCourses">${knownCourses().map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>
+    <div class="row"><label style="flex:1">Tee time<input type="time" id="snTime" value="${esc(ed?.time?fromHrs(ed.time):'')}"></label><label style="flex:1">Tee box <span class="muted small">(optional)</span><input type="text" id="snTee" value="${esc(ed?.teeBox||'')}" placeholder="e.g. White"></label></div>
+    <div class="small muted" style="margin-top:4px"><b>Buy-ins</b> (same as Wednesday unless you change them)</div>
+    <div class="row"><label style="flex:1">Skins $<input type="number" id="snSkins" min="0" max="100" inputmode="numeric" value="${esc(b.skins)}"></label><label style="flex:1">Game $ <span class="muted small">(quota + closest to pin)</span><input type="number" id="snGame" min="0" max="100" inputmode="numeric" value="${esc(b.ctp)}"></label></div>
+    <div class="small muted">Of the game buy-in, ${money$(g.ctpShare)} goes to closest to the pin and the rest to the quota game, paid ${(g.qSplit||[60,30,10]).join('/')}. Quotas come from Wednesday and are not changed by side rounds.</div>
+    <div class="row"><button class="btn" id="snSave" ${S.dbStatus==='ready'?'':'disabled'}>${ed?'Save changes':'Create round'}</button><a class="btn ghost" href="${ed?'#sround':'#side'}">Cancel</a><span class="small" id="snMsg" role="status"></span></div>
+    ${ed && sideCan(ed)?'<button class="linkbtn danger" id="snDel" style="margin-top:10px">Delete this side round</button>':''}
+  </div></section></main>`;
+};
+
+function sideScoreHTML(r, k){
+  const L=S.live[k]||{}, C=courseInfo(r.course), pars=C.pars, inR=Object.keys(L);
+  const ids0=myGroup(k), ids=ids0?ids0.filter(id=>L[id]):null;
+  if (!ids || !ids.length || S.sPick){
+    const sel=new Set((S.sPick||ids||[]).filter(id=>L[id]));
+    return `<h2 style="margin:6px 0 2px">Select up to five players to score for</h2><div class="small muted">${inR.length} in this round · ${sel.size} selected</div>
+    ${inR.length?'':'<div class="banner">No one has joined yet. Add players on the Players tab first.</div>'}
+    <div class="row"><button class="btn" id="sPickGo" ${sel.size?'':'disabled'}>Start scoring</button>${ids&&ids.length?'<button class="btn ghost" id="sPickCancel">Cancel</button>':''}</div>
+    <div class="card" style="padding:0 14px"><div class="pick2">${inR.sort((a,b)=>sname(a).localeCompare(sname(b))).map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-spk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&sel.size>=5?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(sideFull(id))}</span></label>`).join('')}</div></div>`;
+  }
+  if (!pars) return `<div class="banner">No hole pars on file for ${esc(r.course||'this course')} yet. A leader can add them under <a href="#courses">Course Pars</a>.</div>`;
+  const hole=S.sHole||1, par=pars[hole-1];
+  const dr=(S.sDraft && S.sDraft.k===k && S.sDraft.h===hole) ? S.sDraft : (S.sDraft={k, h:hole, v:Object.fromEntries(ids.map(id=>[id, L[id]?.holes?.[hole] ?? par]))});
+  ids.forEach(id=>{ if (!(id in dr.v)) dr.v[id]=L[id]?.holes?.[hole] ?? par; });
+  const saved = id => L[id]?.holes?.[hole]!=null;
+  const ctp = par===3 ? (ctpFor(k, pars).find(c=>c.h===hole)?.list || []) : [];
+  const el = ids.filter(id=>L[id]?.ctp!==false && L[id]?.holes?.[hole]!=null && L[id].holes[hole]<=par);
+  return `<div class="row" style="justify-content:center"><label for="ssh" style="font-weight:700">Score Hole</label><select id="ssh">${pars.map((p,i)=>`<option value="${i+1}"${i+1===hole?' selected':''}>${i+1} (Par-${p})${ids.every(id=>L[id]?.holes?.[i+1]!=null)?' ✓':''}</option>`).join('')}</select></div>
+  <div class="steps">${ids.map((id,i)=>{ const v=dr.v[id], tot=cardTotals(L[id]?.holes, pars);
+    return `<div class="st ${i%2?'':'alt'}"><div><b>${esc(sname(id))}</b><div class="small muted">${tot.thru?`${tot.pts} pts thru ${tot.thru}`:'No holes yet'}${saved(id)?'':' · not saved'}${L[id]?.skins===false?' · no skins':''}${L[id]?.ctp===false?' · no CTP':''}</div></div>
+    <div class="stepper"><button data-sinc="${id}" data-by="-1" aria-label="${esc(sname(id))} one less">−</button><output class="${scls(v-par)}" aria-live="polite" title="${LABEL(v-par)}">${v}</output><button data-sinc="${id}" data-by="1" aria-label="${esc(sname(id))} one more" ${v>=par+2?'disabled':''}>+</button></div></div>`; }).join('')}</div>
+  <div class="small muted" style="text-align:center">Max score is double bogey (${par+2} on this hole).</div>
+  <div class="row" style="justify-content:center"><button class="btn big" id="sSave" ${S.dbStatus==='ready'?'':'disabled'}>Save</button>${ids.some(saved)?`<button class="btn ghost" id="sClear">Clear hole ${hole}</button>`:''}</div>
+  <div class="small" id="sMsg" role="status" style="text-align:center"></div>
+  ${par===3?`<section class="card" id="sCtpBox" style="border:2px solid var(--gold)"><h2>Closest to the Pin · Hole ${hole}</h2>
+    ${ctp.length?`<div class="list">${ctp.map((e,i)=>`<div class="li" style="grid-template-columns:auto 1fr auto auto"><span class="medal">${i+1}</span><span class="name">${esc(sname(e.pid))}</span><b>${ftin(e)}</b><button class="xbtn" data-sctpdel="${e.hole}_${e.pid}" aria-label="Remove ${esc(sname(e.pid))}">×</button></div>`).join('')}</div>`:'<div class="muted small">No entries yet.</div>'}
+    ${el.length?`<div class="row" style="margin-top:10px"><select id="sCtpWho" aria-label="Player">${el.map(id=>`<option value="${id}">${esc(sname(id))} (${L[id].holes[hole]})</option>`).join('')}</select>
+      <input type="number" id="sCtpFt" class="sm" min="0" max="200" inputmode="numeric" placeholder="ft" aria-label="Feet"><input type="number" id="sCtpIn" class="sm" min="0" max="11" inputmode="numeric" placeholder="in" aria-label="Inches"><button class="btn gold" id="sCtpAdd">Add</button></div>`
+      :`<div class="small muted" style="margin-top:6px">Save hole ${hole} first. Players who made par or better (and are in closest to the pin) show up here.</div>`}
+    <div class="small" id="sCtpMsg" role="status"></div>
+    ${ids.some(saved)&&hole<18?`<div class="row" style="justify-content:center;margin-top:10px"><button class="btn big" data-sgoh="${hole+1}">Next hole →</button></div>`:''}</section>`:''}
+  <div class="row"><button class="btn ghost" id="sPickOpen">Change players</button><button class="btn ghost" data-stab="board">Leaderboard</button></div>`;
+}
+
+function sideBoardHTML(r, k){
+  const pars=courseInfo(r.course).pars, L=S.live[k]||{};
+  const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.plus??-999)-(a.plus??-999));
+  let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
+  const tp = n => n===0?'E':(n>0?'+'+n:''+n);
+  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Pts</th><th class="num">+/− quota</th></tr></thead><tbody>
+  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.thru===18?'F':x.thru}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td><td class="num">${plusHtml(x.plus)}</td></tr>
+    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="6" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
+    :'<tr><td colspan="6" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
+  <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Quota +/− uses each player's Wednesday quota (guests and players without a quota show —). Tap a player to see the card.</div>
+  ${rows.length?skinsTable(k)+contestsTable(k, pars)+quotaTable(k, rows):''}`;
+}
+
+V.sround = () => {
+  const r = sideRound(sideKey()); if (!r) return `<main><a href="#side" class="small">← Side Rounds</a><div class="card">${S.dbStatus==='ready'?'This side round was not found. It may have been deleted.':'Loading…'}</div></main>`;
+  const k=sideKey(); sideSub(r.id); const L=S.live[k]||{}, me=meId(), tab=S.sTab||'players', ids=Object.keys(L).sort((a,b)=>sname(a).localeCompare(sname(b)));
+  const tabs=[['players',`Players (${ids.length})`],['score','Score'],['board','Leaderboard'],['pay','Payouts']];
+  let body='';
+  if (tab==='players'){
+    const pool=SEED.players.filter(p=>!p.guest && !p.inactive && !L[p.id] && !String(p.id).startsWith('sg_')).sort((a,b)=>shortName(a.name).localeCompare(shortName(b.name)));
+    const G=gamesFor(k);
+    body = `${me && !L[me] ? `<button class="btn big" id="sJoin" style="width:100%">I'm playing — add me</button>` : ''}
+    <section class="card"><h2>In this round</h2><div class="list">${ids.length?ids.map(id=>{ const v=L[id], can=canEditPl(r,v), sc=v.holes&&Object.keys(v.holes).length;
+      return `<div class="li" style="grid-template-columns:1fr auto auto auto;align-items:center"><div><div class="name">${esc(sname(id))}${id===me?' <span class="small muted">(you)</span>':''}</div><div class="small muted">${esc(sideFull(id))}${v.guest?` · guest of ${esc(sname(v.host)||'')}`:''}${sc?` · ${cardTotals(v.holes,courseInfo(r.course).pars).thru} holes scored`:''}</div></div>
+        <label class="small" title="Skins ${money$(G.skins)}"><input type="checkbox" data-sgm="skins" data-pid="${id}" ${v.skins!==false?'checked':''} ${can?'':'disabled'}> Skins</label>
+        <label class="small" title="Game ${money$(G.ctp)}"><input type="checkbox" data-sgm="ctp" data-pid="${id}" ${v.ctp!==false?'checked':''} ${can?'':'disabled'}> Game</label>
+        ${can?`<button class="xbtn" data-srm="${id}" aria-label="Remove ${esc(sname(id))}">×</button>`:'<span></span>'}</div>`; }).join(''):'<div class="muted small">No one yet.</div>'}</div>
+      <div class="small muted" style="margin-top:6px">Skins ${money$(G.skins)} · Game ${money$(G.ctp)} (${money$(G.ctpShare)} closest to the pin, ${money$(G.ctp-G.ctpShare)} quota game). Uncheck a box if a player isn't in that game.</div>
+      <div class="small" id="sPlMsg" role="status"></div></section>
+    ${sideCan(r)||L[me]?`<section class="card"><h2>Add a member</h2><div class="row"><select id="sAddWho" aria-label="Member" style="flex:1"><option value="">Choose a member…</option>${pool.map(p=>`<option value="${p.id}">${esc(shortName(p.name))}</option>`).join('')}</select><button class="btn" id="sAdd">Add</button></div></section>`:''}
+    ${L[me]||sideCan(r)?`<section class="card"><h2>Add a guest</h2><div class="row"><input type="text" id="sgFirst" placeholder="First name" aria-label="Guest first name" style="flex:1"><input type="text" id="sgLast" placeholder="Last name" aria-label="Guest last name" style="flex:1"><button class="btn" id="sAddGuest">Add guest</button></div><div class="small muted">Guests play skins and closest to the pin. They have no quota, so they aren't in the quota pot.</div></section>`:''}`;
+  } else if (tab==='score') body = sideScoreHTML(r, k);
+  else if (tab==='board') body = sideBoardHTML(r, k);
+  else body = payoutsHTML(k, sidePayRows(k));
+  return `<main><a href="#side" class="small">← Side Rounds</a>
+  <div class="pagehead"><h1 style="font-size:24px">${esc(r.course||'Side round')}</h1>${sideCan(r)?'<a class="btn ghost" href="#snew" data-sedit="1" style="padding:6px 12px">Settings</a>':''}</div>
+  <div class="muted">${sideWhen(r)}${r.teeBox?' · '+esc(r.teeBox)+' tees':''} · side round (doesn't count toward Wednesday)</div>${dbNote()}
+  <div class="seg" style="margin:12px 0">${tabs.map(([t,lbl])=>`<button data-stab="${t}" aria-pressed="${t===tab}">${lbl}</button>`).join('')}</div>
+  ${body}</main>`;
+};
+
+async function sideSaveHole(){
+  const r=sideRound(sideKey()), k=sideKey(), pars=courseInfo(r.course).pars, L=S.live[k]||{}, hole=S.sHole||1, ids=(myGroup(k)||[]).filter(id=>L[id]);
+  const msg=live$('sMsg'); msg.textContent='Saving…';
+  try{ for (const id of ids){ const g=Math.min(S.sDraft.v[id], pars[hole-1]+2), holes={...(L[id].holes||{})}; if (holes[hole]===g) continue; holes[hole]=g; const t=cardTotals(holes,pars);
+      await S.db.doc(`side/${r.id}/players/${id}`).set({...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString(), by:S.meFull||''}); }
+    const ctpEl = pars[hole-1]===3 && ids.some(id=>L[id].ctp!==false && Math.min(S.sDraft.v[id], pars[hole-1]+2)<=pars[hole-1]);
+    if (hole<18 && !ctpEl){ S.sHole=hole+1; S.sDraft=null; }
+    render(); live$('sMsg').textContent = ctpEl ? `Hole ${hole} saved. Enter closest-to-the-pin distances below, then tap Next hole.` : `Hole ${hole} saved.`+(hole<18?` Now on hole ${S.sHole}.`:' Round complete.');
+    if (ctpEl) document.getElementById('sCtpBox')?.scrollIntoView({block:'center'});
+  }catch(err){ live$('sMsg').textContent=noWriteC; }
+}
+async function sideRemovePlayer(r, id){
+  for (const e of Object.values(S.ctp['sr:'+r.id]||{}).filter(e=>e.pid===id)) await S.db.doc(`side/${r.id}/ctp/${e.hole}_${id}`).delete();
+  await S.db.doc(`side/${r.id}/players/${id}`).delete();
+}
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('[data-sopen],[data-snew],[data-sedit],#sMore,[data-stab],#sJoin,#sAdd,#sAddGuest,[data-srm],#snSave,#snDel,#sPickGo,#sPickCancel,#sPickOpen,[data-sinc],#sSave,#sClear,#sCtpAdd,[data-sctpdel],[data-sgoh],[data-sopenrow]'); if (!b) return;
+  if (b.dataset.sopen){ S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (S.sTab||'players') : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
+  if (b.dataset.snew){ S.sEdit=null; return; }
+  if (b.dataset.sedit){ S.sEdit=S.sideId; return; }
+  if (b.id==='sMore'){ S.sideMore=true; render(); return; }
+  if (b.dataset.sopenrow){ S.sOpenRow = S.sOpenRow===b.dataset.sopenrow ? null : b.dataset.sopenrow; render(); return; }
+  if (b.dataset.stab){ S.sTab=b.dataset.stab; S.sPick=null; render(); scrollTo(0,0); return; }
+  const r=sideRound(sideKey()), k=sideKey();
+  if (b.id==='snSave'){ const m=live$('snMsg'), date=$('#snDate').value, course=$('#snCourse').value.trim();
+    if (!date || !course){ m.textContent='Enter the date and course.'; return; }
+    const sk=Math.max(0,+$('#snSkins').value||0), gm=Math.max(0,+$('#snGame').value||0), g=games();
+    const ed=S.sEdit?sideRound('sr:'+S.sEdit):null, id=ed?ed.id:`${date}-${Math.random().toString(36).slice(2,7)}`;
+    const doc={...(ed||{}), id, date, course, time:toHrs($('#snTime').value), teeBox:$('#snTee').value.trim(), buyIn:{skins:sk, ctp:gm, ctpShare:Math.min(g.ctpShare, gm)}, ...(ed?{}:{by:S.meFull||'', byPid:meId()||'', createdAt:new Date().toISOString()}), updatedAt:new Date().toISOString()};
+    b.disabled=true; m.textContent='Saving…';
+    try{ await S.db.doc('side/'+id).set(doc); S.side[id]=doc;
+      if (!ed && meId() && PBY[meId()]) await S.db.doc(`side/${id}/players/${meId()}`).set({pid:meId(), skins:true, ctp:true, addedBy:S.meFull||'', at:new Date().toISOString()});
+      S.sideId=id; S.sEdit=null; S.sTab='players'; location.hash='#sround'; }
+    catch(err){ m.textContent='Couldn’t save. Check your connection — or the database rules may need the side rounds block published.'; b.disabled=false; }
+    return; }
+  if (b.id==='snDel'){ const ed=sideRound('sr:'+S.sEdit); if (!ed || !await ask(`Delete the ${ed.course} side round on ${fmt(ed.date)} and all its scores? This can't be undone.`)) return;
+    try{ sideSub(ed.id); for (const id of Object.keys(S.live['sr:'+ed.id]||{})) await sideRemovePlayer(ed, id); await S.db.doc('side/'+ed.id).delete(); delete S.side[ed.id]; S.sEdit=null; S.sideId=null; location.hash='#side'; }
+    catch(err){ live$('snMsg').textContent=noWriteC; } return; }
+  if (!r) return;
+  const addPl = async (pid, extra={}) => { const m=live$('sPlMsg');
+    try{ await S.db.doc(`side/${r.id}/players/${pid}`).set({pid, skins:true, ctp:true, addedBy:S.meFull||'', at:new Date().toISOString(), ...extra}); if (m) m.textContent=''; }
+    catch(err){ if (m) m.textContent='Couldn’t add. Check your connection — or the database rules may need the side rounds block published.'; } };
+  if (b.id==='sJoin'){ b.disabled=true; await addPl(meId()); }
+  else if (b.id==='sAdd'){ const pid=$('#sAddWho').value; if (pid) await addPl(pid); }
+  else if (b.id==='sAddGuest'){ const f=$('#sgFirst').value.trim(), l=$('#sgLast').value.trim(); if (!f||!l){ live$('sPlMsg').textContent='Enter the guest’s first and last name.'; return; }
+    await addPl('sg_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), {guest:true, first:f, last:l, host:meId()||''}); }
+  else if (b.dataset.srm){ const id=b.dataset.srm, v=sidePl(id), sc=v&&v.holes&&Object.keys(v.holes).length;
+    if (!await ask(`Remove ${sname(id)} from this side round?${sc?' Their scores for this round will be deleted.':''}`)) return;
+    try{ await sideRemovePlayer(r, id); }catch(err){ live$('sPlMsg').textContent=noWriteC; } }
+  else if (b.id==='sPickGo'){ setGroup(k, [...(S.sPick||myGroup(k)||[])].filter(id=>(S.live[k]||{})[id]).slice(0,5)); S.sPick=null; S.sDraft=null; render(); scrollTo(0,0); }
+  else if (b.id==='sPickCancel'){ S.sPick=null; render(); }
+  else if (b.id==='sPickOpen'){ S.sPick=[...(myGroup(k)||[])]; render(); scrollTo(0,0); }
+  else if (b.dataset.sinc){ const id=b.dataset.sinc, pars=courseInfo(r.course).pars, mx=pars?pars[(S.sHole||1)-1]+2:15; S.sDraft.v[id]=Math.max(1,Math.min(mx,(+S.sDraft.v[id]||0)+(+b.dataset.by))); render(); }
+  else if (b.id==='sSave'){ b.disabled=true; await sideSaveHole(); }
+  else if (b.dataset.sgoh){ S.sHole=+b.dataset.sgoh; S.sDraft=null; render(); document.querySelector('.steps')?.scrollIntoView({block:'center'}); }
+  else if (b.id==='sClear'){ const h=S.sHole||1, L=S.live[k]||{}, pars=courseInfo(r.course).pars, ids=(myGroup(k)||[]).filter(id=>L[id]?.holes?.[h]!=null);
+    if (!await ask(`Clear hole ${h} for ${ids.map(sname).join(', ')}?`)) return;
+    try{ for (const id of ids){ const holes={...L[id].holes}; delete holes[h]; const t=cardTotals(holes,pars); await S.db.doc(`side/${r.id}/players/${id}`).set({...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString()}); }
+      S.sDraft=null; render(); live$('sMsg').textContent=`Hole ${h} cleared.`; }catch(err){ live$('sMsg').textContent=noWriteC; } }
+  else if (b.id==='sCtpAdd'){ const pid=$('#sCtpWho').value, ft=$('#sCtpFt').value, inch=$('#sCtpIn').value||'0', h=S.sHole||1;
+    if (ft===''||!Number.isInteger(+ft)||+ft<0||+ft>200||!Number.isInteger(+inch)||+inch<0||+inch>11){ live$('sCtpMsg').textContent='Enter feet (0–200) and inches (0–11).'; return; }
+    try{ await S.db.doc(`side/${r.id}/ctp/${h}_${pid}`).set({hole:h, pid, ft:+ft, inch:+inch, by:S.meFull||'', at:new Date().toISOString()}); live$('sCtpMsg').textContent=`Saved ${sname(pid)} at ${ft}' ${inch}".`; }
+    catch(err){ live$('sCtpMsg').textContent=noWriteC; } }
+  else if (b.dataset.sctpdel){ try{ await S.db.doc(`side/${r.id}/ctp/${b.dataset.sctpdel}`).delete(); }catch(err){ live$('sCtpMsg').textContent=noWriteC; } }
+});
+document.addEventListener('change', async e=>{ const t=e.target;
+  if (t.id==='ssh'){ S.sHole=+t.value; S.sDraft=null; render(); }
+  else if (t.dataset.spk){ const k=sideKey(), s=new Set((S.sPick||myGroup(k)||[]).filter(id=>(S.live[k]||{})[id]));
+    if (t.checked){ if (s.size>=5){ t.checked=false; return; } s.add(t.dataset.spk); } else s.delete(t.dataset.spk); S.sPick=[...s]; render(); }
+  else if (t.dataset.sgm){ const r=sideRound(sideKey()), v=sidePl(t.dataset.pid); if (!r||!v) return;
+    try{ await S.db.doc(`side/${r.id}/players/${v.pid}`).set({...v, [t.dataset.sgm]:t.checked}); }catch(err){ t.checked=!t.checked; live$('sPlMsg').textContent=noWriteC; } }
+});
+
 /* ---------- router ---------- */
-const TABS = {home:'home',backup:'more',welcome:'more',ethics:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
+const TABS = {home:'home',side:'home',sround:'home',snew:'home',backup:'more',welcome:'more',ethics:'more',members:'members',results:'results',standings:'standings',more:'more',schedule:'more',scorekeeper:'more',dues:'more',courses:'more',leaderboard:'more',pairtool:'more',pairings:'more',request:'more',expenses:'more',finalize:'more',access:'more',points:'more',score:'more',admin:'more',admmembers:'more',adminvite:'more',admsched:'more',admcheckin:'more'};
 function route(){ const h=location.hash.slice(1); return V[h]? h : 'home'; }
 function render(){
   const r = route(); const a = document.activeElement; const fid = a && a.id; const pos = a && a.selectionStart;
@@ -2355,6 +2574,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
     db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; if (v && (v._id==='backups' || v.kind==='backups')) S.backups=v; }); render(); }, ()=>{});
     db.collection('ethics').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.ethics=m; S.ethicsLoaded=true; render(); }, ()=>{});
+    db.collection('side').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id&&v.date) m[v.id]=v; }); S.side=m; render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
