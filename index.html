@@ -1803,14 +1803,14 @@ function loginBox(p){
     : `<div class="small muted">No login yet. Enter their email and we’ll send them a link to set their password.</div>
       <div class="row" style="margin-top:6px;flex-wrap:nowrap"><input type="email" id="luEmail" placeholder="their@email.com" value="${esc(p.email||'')}" style="flex:1;min-width:0" aria-label="Login email"><select id="luRole" aria-label="Role"><option value="member">Member</option><option value="admin">Leader</option></select></div>
       <button class="btn gold" id="luCreate" data-pid="${p.id}" style="margin-top:6px">Create login &amp; send invite</button>`}
-    <div class="small" id="luMsg" role="status"></div></div>`;
+    <div class="small" id="luMsg" role="status">${S.luNote&&S.luNote.pid===p.id?esc(S.luNote.t):''}</div></div>`;
 }
 document.addEventListener('click', async e=>{
   const b=e.target.closest('#luCreate,#luSave,#luReset,#pwReset,#signOut'); if (!b) return;
   const F=window.TG_FB; if (!F) return;
   if (b.id==='signOut'){ await F.signOut(F.auth); return; }
   if (b.id==='pwReset'){ try{ await F.sendPasswordResetEmail(F.auth, F.email); live$('accMsg').textContent=`Sent to ${F.email}. Check spam too.`; }catch(err){ live$('accMsg').textContent='Could not send. Try again later.'; } return; }
-  if (b.id==='luReset'){ try{ await F.sendPasswordResetEmail(F.auth, b.dataset.email); live$('luMsg').textContent=`Password email sent to ${b.dataset.email}.`; }catch(err){ live$('luMsg').textContent='Could not send that email.'; } return; }
+  if (b.id==='luReset'){ try{ await F.sendPasswordResetEmail(F.auth, b.dataset.email); live$('luMsg').textContent=`Password email sent to ${b.dataset.email}.`; }catch(err){ live$('luMsg').textContent=`Could not send that email: ${err?.code||err?.message||'error'}`; } return; }
   if (b.id==='luSave'){ const u=S.users[b.dataset.uid]; const role=$('#luRole').value; if (u.pid===S.meId && role!=='admin' && !await ask('Remove your own leader access?')) return;
     const nd={...u, role, by:S.meFull, at:new Date().toISOString()}; delete nd._id;
     try{ await S.db.doc('users/'+b.dataset.uid).set(nd); live$('luMsg').textContent='Role updated.'; }catch(err){ live$('luMsg').textContent=noWrite; } return; }
@@ -1819,15 +1819,22 @@ document.addEventListener('click', async e=>{
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ live$('luMsg').textContent='Enter a valid email.'; return; }
     if (Object.values(S.users||{}).some(u=>u.email===email)){ live$('luMsg').textContent='That email is already linked to a member.'; return; }
     b.disabled=true; live$('luMsg').textContent='Creating login…';
+    let step='create', uid='';
+    const say = t => { S.luNote = {pid, t}; const el=document.getElementById('luMsg'); if (el) el.textContent=t; };
     try{
       const pw = Array.from(crypto.getRandomValues(new Uint8Array(18)), x=>('0'+x.toString(16)).slice(-2)).join('')+'Aa1!';
-      const c = await F.createUserWithEmailAndPassword(F.auth2, email, pw); const uid=c.user.uid; await F.signOut(F.auth2);
+      const c = await F.createUserWithEmailAndPassword(F.auth2, email, pw); uid=c.user.uid; try{ await F.signOut(F.auth2); }catch(e){}
+      step='profile';
       await S.db.doc('users/'+uid).set({role, pid, email, name:shortName(PBY[pid].name), by:S.meFull, at:new Date().toISOString()});
-      await F.sendPasswordResetEmail(F.auth, email);
-      live$('luMsg').textContent=`Done. ${email} was emailed a link to set their password (tell them to check spam).`;
+      step='email';
+      try{ await F.sendPasswordResetEmail(F.auth, email); }
+      catch(e1){ await new Promise(r=>setTimeout(r,2000)); await F.sendPasswordResetEmail(F.auth, email); }   // one automatic retry
+      say(`Done. ${email} was emailed a link to set their password (tell them to check spam).`);
     }catch(err){
-      b.disabled=false;
-      live$('luMsg').textContent = err?.code==='auth/email-already-in-use' ? 'That email already has a Firebase login. Remove it in Firebase → Authentication → Users, then try again.' : ('Could not create the login: '+(err?.code||err?.message||'error'));
+      b.disabled=false; const code=err?.code||err?.message||'error';
+      if (step==='create') say(code==='auth/email-already-in-use' ? 'That email already has a Firebase login. Remove it in Firebase → Authentication → Users, then try again.' : `Step 1 of 3 (create login) failed: ${code}`);
+      else if (step==='profile') say(`The login was created, but linking it to ${shortName(PBY[pid].name)} failed (step 2 of 3): ${code}. Send this message to Ray.`);
+      else say(`The login was created and linked, but the email didn't send (step 3 of 3): ${code}. Tap “Resend password email” to try again.`);
     }
   }
 });
