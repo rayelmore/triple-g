@@ -1477,6 +1477,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
   </div>
   ${isAdmin() ? '' : `<section class="card"><div class="lt">${ltRow('#welcome','card','Welcome Letter','How our group operates')}${ltRow('#ethics','check','Code of Ethics','Read and agree')}${ltRow('#request','fileplus','Submit Request','New expenditure request')}${ltRow('#access','shield','My Account','Sign-in, password, sign out')}</div></section>`}
   ${!isAdmin() ? '' : `<section class="card"><h2>Leadership Tools</h2><div class="lt">
+    ${ltRow('#gamecoord','money','Game Coordinator','Who’s in, who’s paid, pots & groups',true)}
     ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups',true)}
     ${ltRow('#admin','users','Admin','Members & schedule')}
     ${ltRow('#welcome','card','Welcome Letter','View or update for the new year')}
@@ -1778,7 +1779,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['changelog','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['gamecoord','changelog','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -2203,11 +2204,75 @@ async function buildSeason(Y, onStep){
     X.utils.book_append_sheet(wb, ws, name); });
   return {X, wb, file:`Triple-G Season ${Y} Backup (${today}).xlsx`, rounds:rounds.length};
 }
+/* ---------- Game Coordinator (leaders): who's in, who's paid, pots and groups for the round ----------
+   Randy collects skins, Coach collects the CTP + quota game. Each checkmark is its own record
+   (gcpay/<date>/marks/<player>_<skins|game>), so two leaders can check boxes at the same time. */
+S.gcpay = {}; S.gcSubs = {};
+function ensureGcPay(d){
+  if (!S.db || !d || S.gcSubs[d]) return; S.gcSubs[d]=true;
+  S.db.collection(`gcpay/${d}/marks`).onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if (v&&v.pid&&v.kind) m[v.pid+'_'+v.kind]=v; }); S.gcpay[d]=m; if (route()==='gamecoord') render(); }, ()=>{});
+}
+const gcPaid = (d, pid, kind) => !!((S.gcpay[d]||{})[pid+'_'+kind]||{}).paid;
+function gcRows(d){
+  const G=games(), P=S.pairings[d], grp={};
+  if (P && P.groups) P.groups.forEach((g,i)=>g.forEach(id=>{ grp[id]=i+1; }));
+  return playingIds().filter((id,i,a)=>a.indexOf(id)===i).map(id=>{
+    const guest = !!(S.guestsIn||{})[id], q = quotaOn(id, d), sk = inGame(id,'skins'), gm = inGame(id,'ctp');
+    return { id, name:sname(id), guest, noQuota: q===null, grp:grp[id]||0,
+      skins: sk ? G.skins : 0, game: gm ? (q===null ? G.ctpShare : G.ctp) : 0,
+      paidS: gcPaid(d,id,'skins'), paidG: gcPaid(d,id,'game') };
+  }).sort((a,b)=>(a.grp||99)-(b.grp||99) || a.name.localeCompare(b.name));
+}
+V.gamecoord = () => {
+  const d = roundDate(), sch = schedFor(d), G = games(); ensureGcPay(d); ensureLive(d);
+  const R = gcRows(d), f = S.gcF || 'all';
+  const inS = R.filter(r=>r.skins), inG = R.filter(r=>r.game), inQ = inG.filter(r=>!r.noQuota);
+  const expS = inS.reduce((a,r)=>a+r.skins,0), colS = inS.filter(r=>r.paidS).reduce((a,r)=>a+r.skins,0);
+  const expG = inG.reduce((a,r)=>a+r.game,0), colG = inG.filter(r=>r.paidG).reduce((a,r)=>a+r.game,0);
+  const qPot = (G.ctp-G.ctpShare)*inQ.length, cPot = G.ctpShare*inG.length;
+  const shown = R.filter(r => f==='all' || (f==='randy' && r.skins && !r.paidS) || (f==='coach' && r.game && !r.paidG));
+  const ids = new Set(R.map(r=>r.id));
+  const stray = Object.values(S.gcpay[d]||{}).filter(m=>m.paid && (!ids.has(m.pid) || (m.kind==='skins' ? !inGame(m.pid,'skins') : !inGame(m.pid,'ctp'))));
+  const tile = (t, big, sub) => `<div class="tile"><b>${t}</b><span style="font-size:22px;font-weight:800;color:var(--green-2)">${big}</span><span class="small muted">${sub}</span></div>`;
+  const box = (r, kind) => { const amt = kind==='skins' ? r.skins : r.game, paid = kind==='skins' ? r.paidS : r.paidG;
+    if (!amt) return '<span class="muted small">—</span>';
+    return `<label style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;font-weight:700;font-size:12.5px"><input type="checkbox" data-gcp="${esc(r.id)}|${kind}|${amt}"${paid?' checked':''} ${S.dbStatus==='ready'?'':'disabled'} style="width:24px;height:24px;margin:0">${money$(amt)}</label>`; };
+  const P = S.pairings[d], L = S.live[d] || {};
+  const groups = P && P.groups && P.groups.length ? P.groups.map((g,i)=>{ const on=g.filter(id=>ids.has(id)); const thru=Math.max(0,...on.map(id=>(L[id]&&L[id].thru)||0));
+    return `<div class="li" style="grid-template-columns:auto 1fr auto;align-items:start"><b>Grp ${i+1}</b><div><div class="small muted">${teeAt(P.base||sch?.time,i,P.interval||8)}</div><div class="small">${g.map(id=>`${ids.has(id)?'':'<s>'}${esc(sname(id))}${ids.has(id)?'':'</s>'}`).join(', ')}</div></div>${thru?`<span class="pill good">Scoring · thru ${thru}</span>`:'<span class="pill neutral">Not started</span>'}</div>`; }).join('')
+    : `<div class="small muted" style="padding:8px 0">${P ? 'Pairings are saved as a draft.' : 'No pairings yet.'} <a href="#pairings">Pairings</a></div>`;
+  return `<main>${back()}<div class="pagehead"><h1>Game Coordinator</h1></div>${dbNote()}
+  <div class="muted" style="margin-top:-4px">${sch ? esc(sch.course)+' · ' : ''}${fmt(d,{weekday:'long',month:'short',day:'numeric'})}${sch&&sch.time?' · '+fmtTee(sch.time):''}</div>
+  <div class="tiles" style="margin-top:10px">
+    ${tile('Checked in', R.length, `${R.filter(r=>r.guest).length} guest${R.filter(r=>r.guest).length===1?'':'s'}`)}
+    ${tile('Skins · Randy', `${money$(colS)} <span class="small muted">of ${money$(expS)}</span>`, `${inS.filter(r=>r.paidS).length} of ${inS.length} paid · ${money$(G.skins)} each`)}
+    ${tile('CTP + Quota · Coach', `${money$(colG)} <span class="small muted">of ${money$(expG)}</span>`, `${inG.filter(r=>r.paidG).length} of ${inG.length} paid · ${money$(G.ctp)} (no quota ${money$(G.ctpShare)})`)}
+    ${tile('Pots', `${money$(expS+qPot+cPot)}`, `Skins ${money$(expS)} · Quota ${money$(qPot)} (${inQ.length}) · CTP ${money$(cPot)} (${inG.length})`)}
+  </div>
+  <section class="card"><div class="pagehead"><h2 style="margin:0">Payments</h2><span class="small" id="gcMsg" role="status"></span></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 4px">${[['all','Everyone'],['randy','Owes skins'],['coach','Owes CTP + Quota']].map(([k,l])=>`<button class="btn ${f===k?'':'ghost'}" style="padding:6px 12px" data-gcf="${k}">${l}</button>`).join('')}</div>
+    <div class="small muted" style="margin-bottom:6px">Tap the box when a player pays. Randy checks Skins, Coach checks CTP + Quota. Who’s in each game comes from check-in.</div>
+    <div class="tablewrap"><table class="compact"><thead><tr><th>Player</th><th style="text-align:center">Skins</th><th style="text-align:center;line-height:1.15">CTP/<br>Quota</th></tr></thead><tbody>
+    ${shown.map(r=>`<tr style="background:${(!r.skins||r.paidS)&&(!r.game||r.paidG)?'var(--good-soft, rgba(46,125,50,.08))':'transparent'}"><td><b>${esc(r.name)}</b><div class="small muted">${[r.grp?'Grp '+r.grp:'', r.guest?'Guest':'', r.noQuota&&r.game?'No quota · CTP only':''].filter(Boolean).join(' · ')}</div></td><td style="text-align:center">${box(r,'skins')}</td><td style="text-align:center">${box(r,'game')}</td></tr>`).join('') || `<tr><td colspan="3" class="muted">${R.length ? 'Everyone in this list has paid.' : 'No one is checked in yet.'}</td></tr>`}
+    </tbody></table></div>
+    ${stray.length ? `<div class="banner" style="margin-top:10px">Marked paid but no longer in that game (money to give back): ${stray.map(m=>`${esc(sname(m.pid))} · ${m.kind==='skins'?'Skins':'CTP + Quota'} ${money$(m.amt||0)}`).join('; ')}</div>` : ''}
+  </section>
+  <section class="card"><div class="pagehead"><h2 style="margin:0">Groups</h2>${P&&P.status!=='published'?'<span class="pill warn">Draft</span>':''}</div>${groups}</section>
+  <section class="card"><div class="small">Winners and payouts are on <a href="#results">Results</a> and the live leaderboard as scores come in.</div></section></main>`;
+};
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-gcf]'); if (b){ S.gcF=b.dataset.gcf; render(); } });
+document.addEventListener('change', async e=>{ const t=e.target; if (!t.dataset || !t.dataset.gcp || !isAdmin()) return;
+  const [pid, kind, amt] = t.dataset.gcp.split('|'), d = roundDate(), on = t.checked;
+  const m = S.gcpay[d] = {...(S.gcpay[d]||{})}; m[pid+'_'+kind] = {pid, kind, paid:on, amt:+amt};
+  try{ await S.db.doc(`gcpay/${d}/marks/${pid}_${kind}`).set({pid, kind, paid:on, amt:+amt, by:S.meFull||'', at:new Date().toISOString()}); }
+  catch(err){ t.checked=!on; m[pid+'_'+kind] = {pid, kind, paid:!on, amt:+amt}; live$('gcMsg').textContent = /permission/i.test(String(err&&(err.code||err.message))) ? 'Database rule for payments not published yet.' : 'Couldn’t save. Try again.'; return; }
+  render(); });
+
 /* ---------- Change History (organizer only) ---------- */
 const CH_OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];   // must match firestore.rules
 const isOwner = () => isAdmin() && CH_OWNERS.includes((S.email||'').toLowerCase());
-const CH_AREA = { dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
-const CH_FIELD = { amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
+const CH_AREA = { gcpay:'Game day payments', dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
+const CH_FIELD = { paid:'Paid', amt:'Amount', kind:'Game', amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
 const CH_VERB = { add:'Added', edit:'Changed', delete:'Removed', save:'Saved' };
 const chArea = p => CH_AREA[String(p).split('/')[0]] || String(p).split('/')[0];
 const chWho = e => (S.users && S.users[e.uid] && S.users[e.uid].name) || e.name || e.email || 'Unknown';
@@ -2224,6 +2289,7 @@ function chWhat(p){
     case 'roster': case 'photos': case 'ethics': case 'guests': return nm(s[1]);
     case 'users': return (S.users&&S.users[s[1]]&&S.users[s[1]].name) || 'a login';
     case 'sched': case 'pairings': case 'rounds': return dt(s[1]);
+    case 'gcpay': { const [pid,k]=String(s[3]||'').split('_'); return `${nm(pid)} · ${k==='skins'?'Skins':'CTP + Quota'} · ${dt(s[1])}`; }
     case 'dues': { const d=S.duesPay&&S.duesPay[s[1]]; return d ? `${shortName(d.name)} · ${d.year} dues` : String(s[1]).replace(/_/,' · ').replace(/-/g,' '); }
     case 'courses': return (S.courses&&S.courses[s[1]]&&S.courses[s[1]].name) || s[1];
     case 'side': { const r=S.side&&S.side[s[1]]; const base = r ? [r.name||r.course||'Ad hoc round', r.date?dt(r.date):''].filter(Boolean).join(' ') : 'Ad hoc round';
