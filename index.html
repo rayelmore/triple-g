@@ -672,13 +672,79 @@ V.dues = () => {
   const rows = M.filter(m => yr==='all' || !m['y'+yr]);
   const tot = y => [M.filter(m=>m['y'+y]).length, M.reduce((a,m)=>a+(+m['y'+y]||0),0)];
   const [p26,a26]=tot(2026), [p27,a27]=tot(2027);
-  return `<main><div class="pagehead"><h1>Dues</h1></div>
+  return `<main><div class="pagehead"><h1>Dues</h1></div><div class="small" id="duesMsg" role="status" style="font-weight:700"></div>
   <div class="tiles"><div class="tile"><b>2026</b><span>${p26} of ${M.length} paid · $${a26}</span><div class="bar"><i style="width:${p26/M.length*100}%"></i></div></div>
   <div class="tile"><b>2027</b><span>${p27} of ${M.length} paid · $${a27}</span><div class="bar"><i style="width:${p27/M.length*100}%"></i></div></div></div>
   <div class="row"><label for="duesYr" class="small">Show</label><select id="duesYr"><option value="2027"${yr==='2027'?' selected':''}>Unpaid for 2027</option><option value="2026"${yr==='2026'?' selected':''}>Unpaid for 2026</option><option value="all"${yr==='all'?' selected':''}>Everyone</option></select><span class="muted small">${rows.length} shown</span></div>
-  <div class="tablewrap"><table><thead><tr><th>Member</th><th>2026</th><th>2027</th></tr></thead><tbody>
-  ${rows.map(m=>`<tr><td>${esc(shortName(m.name))}</td><td>${pill(m.y2026,m.memo2026)}</td><td>${pill(m.y2027,m.memo2027)}</td></tr>`).join('')}</tbody></table></div></main>`;
+  ${isAdmin() ? dpForm(yr) : ''}
+  <div class="tablewrap"><table><thead><tr><th>Member</th><th>2026</th><th>2027</th>${isAdmin()?'<th></th>':''}</tr></thead><tbody>
+  ${rows.map(m=>`<tr><td>${esc(shortName(m.name))}</td><td>${pill(m.y2026,m.memo2026)}</td><td>${pill(m.y2027,m.memo2027)}</td>${isAdmin()?`<td><button class="btn ghost" style="padding:5px 10px" data-dpe="${esc(m.name)}" ${S.dbStatus==='ready'?'':'disabled'}>Record</button></td>`:''}</tr>`).join('')}</tbody></table></div></main>`;
 };
+
+/* ---------- Dues payments recorded in the app (layered over the spreadsheet) ----------
+   Each payment is saved as dues/<member>_<year>. The spreadsheet values stay underneath,
+   so "Mark unpaid" or a corrected entry simply replaces what the sheet had. */
+const DUES_ORIG = new WeakMap();
+const DUES_FEE = 25;
+const duesId = (name, y) => key(name).replace(/ /g,'-') + '_' + y;
+const mdy = iso => { const m=String(iso||'').match(/^(\d{4})-(\d\d)-(\d\d)$/); return m ? `${m[2]}/${m[3]}/${m[1]}` : ''; };
+function applyDues(){
+  SEED.membership = SEED.membership.filter(m=>!m._app);
+  SEED.membership.forEach(m=>{ const o=DUES_ORIG.get(m); if (o) Object.assign(m,o); });
+  Object.values(S.duesPay||{}).forEach(d=>{
+    if (!d || !d.name || !d.year) return;
+    const k=key(d.name); let m=SEED.membership.find(x=>key(x.name)===k);
+    if (!m){ m={name:d.name, _app:true}; SEED.membership.push(m); }
+    if (!DUES_ORIG.has(m)) DUES_ORIG.set(m, {});
+    const o=DUES_ORIG.get(m), y='y'+d.year, mo='memo'+d.year;
+    if (!(y in o)){ o[y]=m[y]??null; o[mo]=m[mo]??null; }
+    const paid = +d.amount>0;
+    m[y] = paid ? +d.amount : null;
+    m[mo] = paid ? [mdy(d.paidOn), d.method, d.note].filter(Boolean).join(' ') : null;
+  });
+  Object.keys(DUES).forEach(k=>delete DUES[k]); SEED.membership.forEach(x=>{ DUES[key(x.name)]=x; });
+}
+function dpNames(){
+  const m=new Map(); SEED.membership.forEach(x=>m.set(key(x.name), x.name));
+  Object.values(PBY).forEach(p=>{ if (!p.guest && !p.inactive && !m.has(key(p.name))) m.set(key(p.name), p.name); });
+  return [...m.values()].sort((a,b)=>shortName(a).localeCompare(shortName(b)));
+}
+function dpForm(yr){
+  const e=S.dpEdit, cur=new Date().getFullYear();
+  if (!e) return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><div><b>Leaders: record a dues payment</b><div class="small muted">Use this when a member pays by Cash App or cash.</div></div><button class="btn" id="dpNew" ${S.dbStatus==='ready'?'':'disabled'}>＋ Record a payment</button></div></section>`;
+  const row = e.name ? DUES[key(e.name)] : null, have = row && row['y'+e.year];
+  return `<section class="card"><h2>Record a dues payment</h2><div class="form">
+    <label>Member<select id="dpWho"><option value="">Choose a member…</option>${dpNames().map(n=>`<option value="${esc(n)}"${n===e.name?' selected':''}>${esc(shortName(n))}</option>`).join('')}</select></label>
+    <label>Dues year<select id="dpYear">${[cur, cur+1].map(y=>`<option${+e.year===y?' selected':''}>${y}</option>`).join('')}</select></label>
+    ${have ? `<div class="small"><span class="pill good">Already paid $${esc(have)}</span> ${esc(row['memo'+e.year]||'')}. Saving replaces this.</div>` : ''}
+    <label>Amount ($)<input type="number" id="dpAmt" min="1" step="1" inputmode="decimal" value="${esc(e.amount)}"></label>
+    <label>How paid<select id="dpHow">${['Cash App','Cash','Check','Other'].map(h=>`<option${h===e.method?' selected':''}>${h}</option>`).join('')}</select></label>
+    <label>Date paid<input type="date" id="dpDate" value="${esc(e.paidOn)}"></label>
+    <label>Note (optional)<input type="text" id="dpNote" maxlength="80" value="${esc(e.note||'')}" placeholder="e.g. paid for two years"></label>
+    <div class="row"><button class="btn" id="dpSave">Save payment</button><button class="btn ghost" id="dpCancel">Cancel</button>${have?'<button class="btn ghost danger" id="dpUnpaid">Mark unpaid</button>':''}</div>
+    <div class="small" id="dpMsg" role="status"></div></div></section>`;
+}
+const dpStart = (name, yr) => { const cur=new Date().getFullYear(); const y = [cur,cur+1].includes(+yr) ? +yr : (new Date().getMonth()>=9 ? cur+1 : cur);
+  S.dpEdit = { name:name||'', year:y, amount:DUES_FEE, method:'Cash App', paidOn:todayISO(), note:'' }; render(); scrollTo(0,0); };
+document.addEventListener('change', e=>{ const t=e.target; if (!S.dpEdit) return;
+  if (t.id==='dpWho'){ S.dpEdit.name=t.value; render(); } else if (t.id==='dpYear'){ S.dpEdit.year=+t.value; render(); }
+  else if (t.id==='dpHow'){ S.dpEdit.method=t.value; } });
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('#dpNew,[data-dpe],#dpSave,#dpCancel,#dpUnpaid'); if (!b || !isAdmin()) return;
+  if (b.id==='dpNew') return dpStart('', S.duesYr);
+  if (b.dataset.dpe) return dpStart(b.dataset.dpe, S.duesYr);
+  if (b.id==='dpCancel'){ S.dpEdit=null; render(); return; }
+  const ed=S.dpEdit, msg=live$('dpMsg'); if (!ed) return;
+  if (!ed.name){ msg.textContent='Choose a member first.'; return; }
+  const amount = b.id==='dpUnpaid' ? 0 : Math.round(+$('#dpAmt').value*100)/100;
+  if (b.id==='dpSave' && !(amount>0)){ msg.textContent='Enter the amount paid.'; return; }
+  if (b.id==='dpUnpaid' && !await ask(`Mark ${shortName(ed.name)} unpaid for ${ed.year}?`)) return;
+  const rec = { name:ed.name, year:+ed.year, amount, method: amount ? $('#dpHow').value : '', paidOn: amount ? ($('#dpDate').value||todayISO()) : '', note: amount ? $('#dpNote').value.trim().slice(0,80) : '', by:S.meFull||'', at:new Date().toISOString() };
+  b.disabled=true; msg.textContent='Saving…';
+  try{ await S.db.doc('dues/'+duesId(ed.name, ed.year)).set(rec); S.dpEdit=null; render();
+    live$('duesMsg') && (live$('duesMsg').textContent = amount ? `Saved: ${shortName(rec.name)} paid $${amount} for ${rec.year}.` : `${shortName(rec.name)} marked unpaid for ${rec.year}.`); }
+  catch(err){ b.disabled=false; msg.textContent = /permission/i.test(String(err&&(err.code||err.message))) ? 'The database rules don’t allow dues yet. Add the Dues rule in Firebase → Firestore → Rules.' : 'Couldn’t save. Check your connection and try again.'; }
+});
 
 
 /* ---------- game-day & leadership tools ---------- */
@@ -2135,8 +2201,8 @@ async function buildSeason(Y, onStep){
 /* ---------- Change History (organizer only) ---------- */
 const CH_OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];   // must match firestore.rules
 const isOwner = () => isAdmin() && CH_OWNERS.includes((S.email||'').toLowerCase());
-const CH_AREA = { live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
-const CH_FIELD = { pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
+const CH_AREA = { dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
+const CH_FIELD = { amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
 const CH_VERB = { add:'Added', edit:'Changed', delete:'Removed', save:'Saved' };
 const chArea = p => CH_AREA[String(p).split('/')[0]] || String(p).split('/')[0];
 const chWho = e => (S.users && S.users[e.uid] && S.users[e.uid].name) || e.name || e.email || 'Unknown';
@@ -2153,6 +2219,7 @@ function chWhat(p){
     case 'roster': case 'photos': case 'ethics': case 'guests': return nm(s[1]);
     case 'users': return (S.users&&S.users[s[1]]&&S.users[s[1]].name) || 'a login';
     case 'sched': case 'pairings': case 'rounds': return dt(s[1]);
+    case 'dues': { const d=S.duesPay&&S.duesPay[s[1]]; return d ? `${shortName(d.name)} · ${d.year} dues` : String(s[1]).replace(/_/,' · ').replace(/-/g,' '); }
     case 'courses': return (S.courses&&S.courses[s[1]]&&S.courses[s[1]].name) || s[1];
     case 'side': { const r=S.side&&S.side[s[1]]; const base = r ? [r.name||r.course||'Ad hoc round', r.date?dt(r.date):''].filter(Boolean).join(' ') : 'Ad hoc round';
       if (!s[3]) return base; return `${base} · ${s[2]==='ctp' ? 'CTP '+nm(String(s[3]).split('_')[1]) : nm(s[3])}`; }
@@ -2679,6 +2746,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
     db.collection('photos').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id&&v.img) m[v._id]=v.img; }); S.photos=m; render(); }, ()=>{});
+    db.collection('dues').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if (v&&v._id) m[v._id]=v; }); S.duesPay=m; applyDues(); render(); }, ()=>{});
     db.collection('roster').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id) m[v.id]=v; }); S.roster=m; applyRoster(); render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
     db.collection('sched').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.sched=m; applySched(); render(); }, ()=>{});
     subRound(S.ciDate);
