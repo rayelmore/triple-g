@@ -1712,8 +1712,9 @@ const ADMIN_ROUTES = new Set(['backup','admin','admmembers','adminvite','admsche
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
 function biState(){ return S.bi || (S.bi = {map:{}, sel:{}, st:{}, unmatched:[], paste:'', running:false}); }
 function biPool(){ return SEED.players.filter(p=>!p.inactive && !p.guest && !(S.guestBook||{})[p.id]); }
-function biMatch(name){
-  const n = name.toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim(); if (!n) return null;
+function biMatch(name, email){
+  const n = name.toLowerCase().replace(/\([^)]*\)/g,' ').replace(/\b(sr|jr|ii|iii)\b\.?/g,' ').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+  if (!n){ if (!email) return null; const w=email.split('@')[0].toLowerCase().split(/[._\-]+/).filter(x=>/^[a-z]{2,}$/.test(x)); return w.length>=2 ? (biMatch(w.join(' ')) || biMatch(w.slice().reverse().join(' '))) : null; }
   const pool = biPool(), k = key(n);
   let hit = pool.filter(p=>key(p.name)===k || key(p.display||'')===k);
   if (hit.length!==1) hit = pool.filter(p=>nick(p.name) && nick(p.name).toLowerCase().replace(/[^a-z ]/g,'').trim()===n);
@@ -1744,6 +1745,11 @@ V.adminvite = () => {
         <input type="email" data-biem="${p.id}" value="${esc(biEmail(p))}" placeholder="email" ${st==='done'?'disabled':''} style="width:100%;box-sizing:border-box;margin-top:4px" aria-label="Email for ${esc(shortName(p.name))}">
         <div class="small" id="bist-${p.id}">${st==='done'?'<span class="pill good">Invited</span>':st?esc(st):''}</div></div></div>`; }).join('') : '<div class="li"><span class="muted">Everyone active already has a login.</span></div>'}</div>
   </section>
+  <section class="card"><h2>Just save the emails?</h2>
+    <div class="small muted" style="margin-bottom:8px">Saves each email above to the member's profile. <b>No logins are created and no emails are sent.</b> You can invite people later.</div>
+    <button class="btn" id="biSaveOnly" ${S.dbStatus==='ready'&&!b.running?'':'disabled'}>Save emails to profiles only</button>
+    <div class="small" id="biSaveMsg" role="status"></div>
+  </section>
   <section class="card"><h2>3. Send</h2>
     <div class="small muted" style="margin-bottom:8px">Everyone is added as a Member. Change anyone to Leader later in Members → Edit. The emails may land in spam, so give the group a heads-up.</div>
     <button class="btn gold big" id="biGo" ${n&&!b.running&&S.dbStatus==='ready'?'':'disabled'}>${b.running?'Sending…':`Create ${n} login${n===1?'':'s'} &amp; send invites`}</button>
@@ -1757,11 +1763,23 @@ document.addEventListener('input', e=>{
 });
 document.addEventListener('change', e=>{ const t=e.target; if (t.dataset && t.dataset.bisel){ biState().sel[t.dataset.bisel]=t.checked; render(); } });
 document.addEventListener('click', async e=>{
-  const t=e.target.closest('#biMatch,#biAll,#biNone,#biGo'); if (!t) return; const b=biState();
+  const t=e.target.closest('#biMatch,#biAll,#biNone,#biGo,#biSaveOnly'); if (!t) return; const b=biState();
+  if (t.id==='biSaveOnly'){
+    const list = biPool().filter(p=>{ const em=biEmail(p); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) && em!==(p.email||'').toLowerCase(); });
+    if (!list.length){ live$('biSaveMsg').textContent='No new or changed emails to save.'; return; }
+    const dupes = list.map(biEmail).filter((x,i,a)=>a.indexOf(x)!==i);
+    if (dupes.length){ live$('biSaveMsg').textContent=`The same email is used twice: ${[...new Set(dupes)].join(', ')}. Fix that first.`; return; }
+    if (!await ask(`Save ${list.length} email${list.length===1?'':'s'} to member profiles? No logins are created and nothing is emailed.`)) return;
+    t.disabled=true; let ok=0, bad=[];
+    for (const p of list){ const em=biEmail(p), sp=splitName(p.name), r=(S.roster||{})[p.id]||{};
+      try{ await S.db.doc('roster/'+p.id).set({id:p.id, first:r.first??sp.first, last:r.last??sp.last, nick:r.nick??sp.nick, phone:p.phone||'', email:em, member:!p.guest, auto:!!p.auto, inactive:!!p.inactive, by:S.meFull||'', at:new Date().toISOString()}); p.email=em; ok++; }
+      catch(err){ bad.push(shortName(p.name)); } }
+    render(); live$('biSaveMsg').textContent = `Saved ${ok} email${ok===1?'':'s'} to profiles. No invites were sent.` + (bad.length?` Couldn’t save: ${bad.join(', ')}.`:'');
+    return; }
   if (t.id==='biMatch'){
     b.unmatched=[]; let got=0;
     b.paste.split(/\r?\n/).forEach(line=>{ const m=line.match(EMRX); if (!m) return; const email=m[0].toLowerCase();
-      const name=line.replace(m[0],' ').replace(/[\t,;:<>"'|]/g,' ').trim(); const p=biMatch(name);
+      const name=line.replace(new RegExp(EMRX.source,'g'),' ').replace(/[\t,;:<>"'|]/g,' ').trim(); const p=biMatch(name, email);
       if (p){ b.map[p.id]=email; delete b.sel[p.id]; got++; } else b.unmatched.push(name ? `${name} (${email})` : email); });
     render(); live$('biMsg').textContent = `Matched ${got} email${got===1?'':'s'}.`; return; }
   if (t.id==='biAll'){ biPool().forEach(p=>{ delete b.sel[p.id]; }); render(); return; }
