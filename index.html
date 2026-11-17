@@ -495,13 +495,17 @@ function tile(href, icon, title, sub){ return `<a class="tile" href="${href}"><s
 const V = {};
 function homePairings(nr){
   if (!nr) return ''; const P = S.pairings[nr.date]; if (!P || P.status!=='published' || !P.groups.length) return '';
-  return `<section class="card"><div class="pagehead"><h2 style="margin:0">This Week's Pairings</h2>${isAdmin()?'<a href="#pairings" class="small">Manage</a>':''}</div>
-  ${P.groups.map((g,i)=>`<div class="li" style="grid-template-columns:82px 1fr"><b>${teeAt(P.base||nr.time,i,P.interval||8)}</b><span>${g.map(id=>esc(pname(id))).join(', ')}</span></div>`).join('')}</section>`;
+  const me = meId(), inSet = new Set([...Object.keys(S.checkins||{}), ...Object.keys(S.guestsIn||{})]);
+  const placed = new Set(P.groups.flat()), waiting = [...inSet].filter(id=>!placed.has(id));
+  return `<div class="pagehead"><h2 style="margin:0">This Week's Pairings</h2>${isAdmin()?'<a href="#pairings" class="small">Manage</a>':`<span class="muted small">${placed.size} playing</span>`}</div>
+  <div class="list" style="margin:10px 0 12px">${P.groups.map((g,i)=>{ const mine = me && g.includes(me); return `<div class="li" style="grid-template-columns:82px 1fr;${mine?'background:rgba(201,168,76,.12);border-radius:10px;padding-left:8px':''}"><b>${teeAt(P.base||nr.time,i,P.interval||8)}</b><span>${mine?'<span class="pill good" style="margin-right:6px">Your group</span>':''}${g.map(id=>`<span style="white-space:nowrap">${esc(whoName(id)||pname(id))}</span>`).join(', ')}</span></div>`; }).join('')}</div>
+  ${waiting.length?`<div class="small" style="margin:-4px 0 12px"><b>Checked in, not grouped yet:</b> ${waiting.map(id=>esc(whoName(id))).join(', ')} <span class="muted">· a leader will add you</span></div>`:''}`;
 }
 V.home = () => {
   const nr = nextRound(), R = ROSTER(), rounds = allRounds(), last = rounds[rounds.length-1];
   const inIds = Object.keys(S.checkins);
   const playing = R.filter(p=>inIds.includes(p.id));
+  const pubP = nr && S.pairings[nr.date] && S.pairings[nr.date].status==='published' && S.pairings[nr.date].groups.length;
   const yr = new Date().getMonth() >= 9 ? 2027 : 2026; // dues for next year open in the fall
   const M = SEED.membership, paid = M.filter(m=>m['y'+yr]).length;
   const res = R.map(p=>{ const s=scoresFor(p), v=s[last.date]; if (typeof v!=='number') return null; const q=quotaBefore(p,s,last.date); return {p,v,plus:q===null?null:v-q}; }).filter(x=>x && x.plus!==null).sort((a,b)=>b.plus-a.plus).slice(0,3);
@@ -521,12 +525,12 @@ V.home = () => {
       <div class="countdown">${countdown(nr)}</div>
     </section>` : ''}
     <section class="card">
-      <div class="pagehead"><h2 style="margin:0">Who's Playing This Week</h2><span class="muted small">${playing.length+guestsToday().length} in${guestsToday().length?` · ${guestsToday().length} guest${guestsToday().length>1?'s':''}`:''}</span></div>
+      ${pubP ? homePairings(nr) : `<div class="pagehead"><h2 style="margin:0">Who's Playing This Week</h2><span class="muted small">${playing.length+guestsToday().length} in${guestsToday().length?` · ${guestsToday().length} guest${guestsToday().length>1?'s':''}`:''}</span></div>
       <div class="avatars" style="margin:14px 0">${playing.length||guestsToday().length ? playing.map(p=>whoAv(p.id)).join('') + guestsToday().map(g=>whoAv(g.id)).join('') : `<span class="muted">${S.dbStatus==='ready'?'Nobody has checked in yet.':S.dbStatus==='connecting'?'Loading check-ins…':'Check-ins load when the app is opened from its claude.ai link.'}</span>`}</div>
-      ${playing.length+guestsToday().length?`<div class="small muted" style="margin:-6px 0 12px">Skins: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'skins')).length} · Closest to the pin: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'ctp')).length}</div>`:''}
+      ${playing.length+guestsToday().length?`<div class="small muted" style="margin:-6px 0 12px">Skins: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'skins')).length} · Closest to the pin: ${[...Object.keys(S.checkins),...Object.keys(S.guestsIn||{})].filter(id=>inGame(id,'ctp')).length}</div>`:''}`}
       ${Object.keys(S.ciOut||{}).length?`<div class="small" style="margin:-4px 0 12px"><b>Out this week:</b> ${Object.keys(S.ciOut).filter(id=>PBY[id]).map(id=>esc(sname(id))+(S.ciOut[id].late?' <span class="late">(late)</span>':'')).join(', ')}</div>`:''}
       ${(()=>{ const la=[...Object.values(S.checkins).filter(c=>c.late), ...guestsToday().filter(g=>g.late)]; return la.length?`<div class="small" style="margin:-4px 0 12px"><b>Late adds:</b> ${la.map(c=>esc(sname(c.pid||c.id))).join(', ')}</div>`:''; })()}
-      ${playing.length+guestsToday().length?`<button class="linkbtn" id="whoNames">${S.whoList?'Hide names':'Show names'}</button>${S.whoList?`<div class="wholist">${[...playing.map(p=>p.id), ...guestsToday().map(g=>g.id)].sort((a,b)=>whoName(a).localeCompare(whoName(b))).map(id=>`<div><span class="av xs${(S.guestsIn||{})[id]?' g':''}">${avFace(id,whoName(id))}</span><span><b>${esc(whoName(id))}</b> <span class="muted small">${esc(whoSub(id))}</span></span></div>`).join('')}</div>`:''}`:''}
+      ${!pubP && playing.length+guestsToday().length?`<button class="linkbtn" id="whoNames">${S.whoList?'Hide names':'Show names'}</button>${S.whoList?`<div class="wholist">${[...playing.map(p=>p.id), ...guestsToday().map(g=>g.id)].sort((a,b)=>whoName(a).localeCompare(whoName(b))).map(id=>`<div><span class="av xs${(S.guestsIn||{})[id]?' g':''}">${avFace(id,whoName(id))}</span><span><b>${esc(whoName(id))}</b> <span class="muted small">${esc(whoSub(id))}</span></span></div>`).join('')}</div>`:''}`:''}
       ${meId() && S.dbStatus==='ready' && !photoOf(meId()) ? `<div class="small" style="margin:0 0 12px"><a href="#access">📷 Add your photo</a> <span class="muted">so the guys can spot you here</span></div>`:''}
       ${deadlineLine()}
       <button class="btn" id="openCheckin" ${S.dbStatus==='ready'?'':'disabled'}>${!meId() ? 'Check In' : S.checkins[meId()] ? (isRegular(meId()) ? 'In ✓ · Can’t make it?' : 'Change my check-in') : (S.ciOut[meId()] ? 'Out this week · Change' : 'Check In')}</button>
