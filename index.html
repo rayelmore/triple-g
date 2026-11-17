@@ -1477,8 +1477,8 @@ document.addEventListener('click', async e=>{
   else if (b.id==='ptNewGrp'){ const st=ptState(); if (!st.groups.length || st.groups[st.groups.length-1].length) st.groups.push([]); render(); }
   else if (b.dataset.ptsave){
     const st=ptState(), m=live$('ptMsg'), groups=st.groups.filter(g=>g.length); b.disabled=true; m.textContent='Saving…';
-    try{ await S.db.doc('pairings/'+st.date).set({date:st.date, groups, interval:st.interval, base:schedFor(st.date)?.time||'', status:b.dataset.ptsave, by:S.meFull||'', savedAt:new Date().toISOString()}); st.dirty=false; st.groups=groups; render(); live$('ptMsg').textContent = b.dataset.ptsave==='published'?'Published. Members see it on the home screen.':'Draft saved.'; }
-    catch(err){ m.textContent=noWrite; b.disabled=false; }
+    try{ await S.db.doc('pairings/'+st.date).set({date:st.date, groups: groups.map(ids=>({ids})), interval:st.interval||8, base:schedFor(st.date)?.time||'', status:b.dataset.ptsave, by:S.meFull||'', savedAt:new Date().toISOString()}); st.dirty=false; st.groups=groups; render(); live$('ptMsg').textContent = b.dataset.ptsave==='published'?'Published. Members see it on the home screen.':'Draft saved.'; }
+    catch(err){ console.warn('pairings save', err); m.textContent = err&&err.code==='permission-denied' ? noWrite : noWriteC; b.disabled=false; }
   }
   else if (b.dataset.exf){ S.exF=b.dataset.exf; render(); }
   else if (b.dataset.ap){
@@ -2578,7 +2578,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('rounds').onSnapshot(snap=>{ clearTimeout(timer); const m={}; docs(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.dbRounds=m; S.dbStatus='ready'; render(); },
       ()=>{ clearTimeout(timer); S.dbStatus='off'; render(); });
     ensureLive(S.ciDate);
-    db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.pairings=m; render(); }, ()=>{});
+    db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date){ v.groups=(v.groups||[]).map(g=>Array.isArray(g)?g:(g&&Array.isArray(g.ids)?g.ids:[])); m[v.date]=v; } }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
     db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; if (v && (v._id==='backups' || v.kind==='backups')) S.backups=v; }); render(); }, ()=>{});
     db.collection('ethics').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.ethics=m; S.ethicsLoaded=true; render(); }, ()=>{});
