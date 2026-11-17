@@ -539,7 +539,7 @@ V.home = () => {
       <h2>${yr} Annual Dues · $25</h2>
       <div>${paid} of ${M.length} members paid</div>
       <div class="bar"><i style="width:${Math.round(paid/M.length*100)}%"></i></div>
-      <div class="small muted" style="margin-top:6px">Paid by Cash App or cash. <a href="#dues">See who's paid</a></div>
+      <div class="small muted" style="margin-top:6px">Paid by Cash App or cash. <a href="#dues" data-duesshow="p${yr}">See who's paid</a></div>
     </div></section>
     ${last ? `<section class="card">
       <h2>Last Round · ${esc(last.course)}</h2>
@@ -667,15 +667,18 @@ V.scorekeeper = () => {
   <div class="row"><button class="btn" id="skSave" ${S.dbStatus==='ready'?'':'disabled'}>Save round</button><button class="btn ghost" id="skClear">Clear</button><span class="small" id="skMsg" role="status"></span></div></main>`;
 };
 V.dues = () => {
-  const M = SEED.membership, yr = S.duesYr || '2027';
+  const M = SEED.membership;
+  let show = S.duesYr || 'u2027'; if (/^\d{4}$/.test(show)) show = 'u'+show;
+  const yr = show.slice(1), want = show[0]==='p';
+  const opt = (v,t)=>`<option value="${v}"${show===v?' selected':''}>${t}</option>`;
   const pill = (v,m)=> v ? `<span class="pill good">$${esc(v)}</span><div class="small muted">${esc(m||'')}</div>` : '<span class="pill warn">Unpaid</span>';
-  const rows = M.filter(m => yr==='all' || !m['y'+yr]);
+  const rows = M.filter(m => show==='all' || !!m['y'+yr]===want);
   const tot = y => [M.filter(m=>m['y'+y]).length, M.reduce((a,m)=>a+(+m['y'+y]||0),0)];
   const [p26,a26]=tot(2026), [p27,a27]=tot(2027);
   return `<main><div class="pagehead"><h1>Dues</h1></div><div class="small" id="duesMsg" role="status" style="font-weight:700"></div>
   <div class="tiles"><div class="tile"><b>2026</b><span>${p26} of ${M.length} paid · $${a26}</span><div class="bar"><i style="width:${p26/M.length*100}%"></i></div></div>
   <div class="tile"><b>2027</b><span>${p27} of ${M.length} paid · $${a27}</span><div class="bar"><i style="width:${p27/M.length*100}%"></i></div></div></div>
-  <div class="row"><label for="duesYr" class="small">Show</label><select id="duesYr"><option value="2027"${yr==='2027'?' selected':''}>Unpaid for 2027</option><option value="2026"${yr==='2026'?' selected':''}>Unpaid for 2026</option><option value="all"${yr==='all'?' selected':''}>Everyone</option></select><span class="muted small">${rows.length} shown</span></div>
+  <div class="row"><label for="duesYr" class="small">Show</label><select id="duesYr">${opt('p2027','Paid for 2027')}${opt('u2027','Unpaid for 2027')}${opt('p2026','Paid for 2026')}${opt('u2026','Unpaid for 2026')}${opt('all','Everyone')}</select><span class="muted small">${rows.length} shown</span></div>
   ${isAdmin() ? dpForm(yr) : ''}
   <div class="tablewrap"><table><thead><tr><th>Member</th><th>2026</th><th>2027</th>${isAdmin()?'<th></th>':''}</tr></thead><tbody>
   ${rows.map(m=>`<tr><td>${esc(shortName(m.name))}</td><td>${pill(m.y2026,m.memo2026)}</td><td>${pill(m.y2027,m.memo2027)}</td>${isAdmin()?`<td><button class="btn ghost" style="padding:5px 10px" data-dpe="${esc(m.name)}" ${S.dbStatus==='ready'?'':'disabled'}>Record</button></td>`:''}</tr>`).join('')}</tbody></table></div></main>`;
@@ -724,6 +727,7 @@ function dpForm(yr){
     <div class="row"><button class="btn" id="dpSave">Save payment</button><button class="btn ghost" id="dpCancel">Cancel</button>${have?'<button class="btn ghost danger" id="dpUnpaid">Mark unpaid</button>':''}</div>
     <div class="small" id="dpMsg" role="status"></div></div></section>`;
 }
+document.addEventListener('click', e=>{ const a=e.target.closest('[data-duesshow]'); if (a) S.duesYr=a.dataset.duesshow; });
 const dpStart = (name, yr) => { const cur=new Date().getFullYear(); const y = [cur,cur+1].includes(+yr) ? +yr : (new Date().getMonth()>=9 ? cur+1 : cur);
   S.dpEdit = { name:name||'', year:y, amount:DUES_FEE, method:'Cash App', paidOn:todayISO(), note:'' }; render(); scrollTo(0,0); };
 document.addEventListener('change', e=>{ const t=e.target; if (!S.dpEdit) return;
@@ -731,8 +735,9 @@ document.addEventListener('change', e=>{ const t=e.target; if (!S.dpEdit) return
   else if (t.id==='dpHow'){ S.dpEdit.method=t.value; } });
 document.addEventListener('click', async e=>{
   const b=e.target.closest('#dpNew,[data-dpe],#dpSave,#dpCancel,#dpUnpaid'); if (!b || !isAdmin()) return;
-  if (b.id==='dpNew') return dpStart('', S.duesYr);
-  if (b.dataset.dpe) return dpStart(b.dataset.dpe, S.duesYr);
+  const dy = String(S.duesYr||'').replace(/\D/g,'');
+  if (b.id==='dpNew') return dpStart('', dy);
+  if (b.dataset.dpe) return dpStart(b.dataset.dpe, dy);
   if (b.id==='dpCancel'){ S.dpEdit=null; render(); return; }
   const ed=S.dpEdit, msg=live$('dpMsg'); if (!ed) return;
   if (!ed.name){ msg.textContent='Choose a member first.'; return; }
