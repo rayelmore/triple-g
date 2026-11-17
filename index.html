@@ -1418,6 +1418,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     ${ltRow('#access','shield','My Account','Sign-in, password, sign out')}
     ${ltRow('#finalize','check','Finalize Game Day','Lock scores &amp; update quotas',true)}
     ${ltRow('#backup','shield','Season Backup','Download a season to Excel')}
+    ${isOwner() ? ltRow('#changelog','edit','Change History','Who changed what · only you see this') : ''}
   </div></section>`}
   <section class="card"><h2>Group Info</h2><div class="tiles">
     ${tile('#schedule','cal','Schedule','Courses & tee times')}
@@ -1706,7 +1707,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['changelog','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -2131,6 +2132,75 @@ async function buildSeason(Y, onStep){
     X.utils.book_append_sheet(wb, ws, name); });
   return {X, wb, file:`Triple-G Season ${Y} Backup (${today}).xlsx`, rounds:rounds.length};
 }
+/* ---------- Change History (organizer only) ---------- */
+const CH_OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];   // must match firestore.rules
+const isOwner = () => isAdmin() && CH_OWNERS.includes((S.email||'').toLowerCase());
+const CH_AREA = { live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
+const CH_FIELD = { pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
+const CH_VERB = { add:'Added', edit:'Changed', delete:'Removed', save:'Saved' };
+const chArea = p => CH_AREA[String(p).split('/')[0]] || String(p).split('/')[0];
+const chWho = e => (S.users && S.users[e.uid] && S.users[e.uid].name) || e.name || e.email || 'Unknown';
+const chField = f => { const m=String(f).match(/^holes\.(\d+)$/); if (m) return 'Hole '+m[1]; const t=String(f).split('.'); return t.map((x,i)=>i===0?(CH_FIELD[x]||x):x).join(' › '); };
+const chShow = c => String(c.f)==='pid' ? { from: c.from ? sname(c.from) : c.from, to: c.to ? sname(c.to) : c.to } : c;
+const chVal = v => v==null || v==='' ? '—' : v===true ? 'yes' : v===false ? 'no' : esc(String(v));
+function chWhat(p){
+  const s=String(p).split('/'); const nm = id => { const n=sname(id); return n!==id ? n : ((S.users&&S.users[id]&&S.users[id].name) || id||''); };
+  const dt = x => /^\d{4}-\d\d-\d\d$/.test(x||'') ? fmt(x,{month:'short',day:'numeric'}) : (x||'');
+  switch(s[0]){
+    case 'live': return `${nm(s[3])} · ${dt(s[1])}`;
+    case 'ctp': { const [h,pid]=String(s[3]||'').split('_'); return `${nm(pid)} · hole ${h} · ${dt(s[1])}`; }
+    case 'checkins': return `${s[2]==='guests'?'Guest ':''}${nm(s[3])} · ${dt(s[1])}`;
+    case 'roster': case 'photos': case 'ethics': case 'guests': return nm(s[1]);
+    case 'users': return (S.users&&S.users[s[1]]&&S.users[s[1]].name) || 'a login';
+    case 'sched': case 'pairings': case 'rounds': return dt(s[1]);
+    case 'courses': return (S.courses&&S.courses[s[1]]&&S.courses[s[1]].name) || s[1];
+    case 'side': { const r=S.side&&S.side[s[1]]; const base = r ? [r.name||r.course||'Ad hoc round', r.date?dt(r.date):''].filter(Boolean).join(' ') : 'Ad hoc round';
+      if (!s[3]) return base; return `${base} · ${s[2]==='ctp' ? 'CTP '+nm(String(s[3]).split('_')[1]) : nm(s[3])}`; }
+    default: return s.slice(1).join(' / ');
+  }
+}
+async function chLoad(more){
+  const st=S.ch; if (!st || st.busy || !S.db || !S.db.recent) return; st.busy=true;
+  try{ const last = more && st.rows && st.rows.length ? st.rows[st.rows.length-1].at : null;
+    const got = await S.db.recent(200, last); st.rows = more ? [...(st.rows||[]), ...got] : got; st.more = got.length===200; st.err=''; }
+  catch(err){ st.err = /permission/i.test(String(err&&(err.code||err.message))) ? 'perm' : 'net'; if (!st.rows) st.rows=[]; }
+  st.busy=false; if (route()==='changelog') render();
+}
+V.changelog = () => {
+  if (!isOwner()) return `<main>${back()}<div class="pagehead"><h1>Change History</h1></div><div class="card">Only the group organizer can open this page.</div></main>`;
+  const st = S.ch || (S.ch = { rows:null, who:'', area:'', busy:false, more:false, err:'' });
+  if (!st.rows && !st.busy && S.dbStatus==='ready') setTimeout(()=>chLoad(false), 0);
+  const all = st.rows||[];
+  const rows = all.filter(e => (!st.who || e.uid===st.who) && (!st.area || chArea(e.path)===st.area));
+  const whos = [...new Map(all.map(e=>[e.uid, chWho(e)])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const areas = [...new Set(all.map(e=>chArea(e.path)))].sort();
+  let day='';
+  const list = rows.map(e => {
+    const d = new Date(e.at), dk = d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',year:'numeric'});
+    const head = dk!==day ? `<div class="small" style="font-weight:800;margin:14px 0 2px;color:var(--muted)">${dk}</div>` : ''; day=dk;
+    const ch = (e.changes||[]).map(chShow0 => { const c={...chShow0, ...chShow(chShow0)}; return e.action==='add' || e.action==='save' ? `<div>${esc(chField(c.f))}: <b>${chVal(c.to)}</b></div>` : e.action==='delete' ? `<div>${esc(chField(c.f))} was <b>${chVal(c.from)}</b></div>` : `<div>${esc(chField(c.f))}: ${chVal(c.from)} → <b>${chVal(c.to)}</b></div>`; }).join('');
+    return `${head}<div class="li" style="grid-template-columns:auto 1fr;align-items:start">
+      <span class="small muted" style="min-width:62px">${d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>
+      <div><div><b>${esc(chWho(e))}</b> · ${CH_VERB[e.action]||'Saved'} <span class="pill neutral">${esc(chArea(e.path))}</span></div>
+        <div class="small">${esc(chWhat(e.path))}</div>
+        ${ch ? `<div class="small muted" style="margin-top:4px">${ch}${e.more?`<div>…and ${e.more} more</div>`:''}</div>` : ''}</div></div>`;
+  }).join('');
+  return `<main>${back()}<div class="pagehead"><h1>Change History</h1><button class="btn ghost" id="chRefresh" style="padding:6px 12px" ${st.busy?'disabled':''}>Refresh</button></div>${dbNote()}
+  <div class="muted">Every change a leader makes, newest first: who, when, and what it was before and after. Only you can see this page. Members’ own check-ins and scoring aren’t listed.</div>
+  ${st.err==='perm' ? `<div class="banner">The database isn’t letting this page read the history yet. Add the Change History rule in Firebase → Firestore → Rules, publish, then tap Refresh.</div>` : st.err==='net' ? `<div class="banner">Couldn’t load the history. Check your connection and tap Refresh.</div>` : ''}
+  <section class="card">
+    <div class="row" style="flex-wrap:wrap;gap:8px"><select id="chWho" aria-label="Filter by leader"><option value="">All leaders</option>${whos.map(([u,n])=>`<option value="${esc(u)}"${u===st.who?' selected':''}>${esc(n)}</option>`).join('')}</select>
+      <select id="chArea" aria-label="Filter by area"><option value="">Everything</option>${areas.map(a=>`<option${a===st.area?' selected':''}>${esc(a)}</option>`).join('')}</select>
+      <span class="small muted">${rows.length} shown</span></div>
+    <div class="list">${st.busy && !all.length ? '<div class="small muted" style="padding:12px 0">Loading…</div>' : list || '<div class="small muted" style="padding:12px 0">No changes recorded yet. Changes show up here from now on.</div>'}</div>
+    ${st.more ? `<div class="row" style="margin-top:10px"><button class="btn ghost" id="chMore" ${st.busy?'disabled':''}>Load older changes</button></div>` : ''}
+  </section></main>`;
+};
+document.addEventListener('change', e=>{ const t=e.target; if (!S.ch) return;
+  if (t.id==='chWho'){ S.ch.who=t.value; render(); } else if (t.id==='chArea'){ S.ch.area=t.value; render(); } });
+document.addEventListener('click', e=>{ const b=e.target.closest('#chMore,#chRefresh'); if (!b || !S.ch) return;
+  if (b.id==='chMore') chLoad(true); else { S.ch.rows=null; S.ch.err=''; render(); } });
+
 V.backup = () => {
   const ys=backupSeasons(), cur=new Date().getFullYear(), last=(S.backups&&S.backups.seasons)||{};
   return `<main>${back()}<div class="pagehead"><h1>Season Backup</h1></div>${dbNote()}
@@ -2620,7 +2690,7 @@ window.bootDB = (db, prof, fbUser) => {
 <script type="module">
 /* ---------- Firebase: data + logins ---------- */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, getDocFromCache, addDoc, query, orderBy, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, createUserWithEmailAndPassword, sendEmailVerification } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const firebaseConfig = {
@@ -2645,8 +2715,45 @@ const auth2 = getAuth(app2);
 const db = {
   collection: p => ({ onSnapshot: (cb, err) => onSnapshot(collection(fs, p), s => cb({ docs: s.docs }), e => { console.warn(p, e.code); err && err(e); }),
     get: () => getDocs(collection(fs, p)).then(s => ({ docs: s.docs })) }),
-  doc: p => ({ set: v => setDoc(doc(fs, p), JSON.parse(JSON.stringify(v))), delete: () => deleteDoc(doc(fs, p)) })
+  doc: p => ({
+    set: v => { const ref=doc(fs, p), data=JSON.parse(JSON.stringify(v)), before=AUDIT ? prevOf(ref) : null;
+      return setDoc(ref, data).then(r => { if (before) logChange(p, before, data); return r; }); },
+    delete: () => { const ref=doc(fs, p), before=AUDIT ? prevOf(ref) : null;
+      return deleteDoc(ref).then(r => { if (before) logChange(p, before, null); return r; }); }
+  }),
+  // Change History page (organizer only; the database rules block everyone else)
+  recent: (n, beforeAt) => getDocs(query(collection(fs, 'auditlog'), orderBy('at', 'desc'), ...(beforeAt ? [where('at', '<', beforeAt)] : []), limit(n)))
+    .then(s => s.docs.map(d => ({ _id: d.id, ...d.data() })))
 };
+
+/* ---------- Change History: every save a leader makes is logged (who, when, what changed) ----------
+   Runs after the save finishes and is never waited on, so the app is no slower.
+   The "before" copy comes from the phone's local cache, which is instant and free. */
+let AUDIT = null;   // set at sign-in for leaders only; members' saves aren't logged
+const AUDIT_SKIP = new Set(['at','by','savedAt','finalizedAt','addedBy','_id']);
+const prevOf = ref => getDocFromCache(ref).then(s => s.exists() ? s.data() : null, () => undefined);
+function flatOf(o, pre='', out={}, depth=0){
+  if (o && typeof o==='object' && !Array.isArray(o) && depth<3){ for (const k of Object.keys(o)){ if (!pre && AUDIT_SKIP.has(k)) continue; flatOf(o[k], pre ? pre+'.'+k : k, out, depth+1); } }
+  else if (pre) out[pre] = o;
+  return out;
+}
+function shortVal(v){
+  if (v==null) return null;
+  if (typeof v==='string') return v.startsWith('data:') ? '(photo)' : v.length>80 ? v.slice(0,77)+'…' : v;
+  if (typeof v==='object'){ const t=JSON.stringify(v); return t.length>80 ? t.slice(0,77)+'…' : t; }
+  return v;
+}
+function logChange(path, beforeP, after){
+  if (!AUDIT || path.startsWith('auditlog')) return;
+  beforeP.then(before => {
+    const A=flatOf(before||{}), B=flatOf(after||{}), changes=[];
+    new Set([...Object.keys(A), ...Object.keys(B)]).forEach(k => { if (JSON.stringify(A[k]??null)!==JSON.stringify(B[k]??null)) changes.push({ f:k, from:shortVal(A[k]), to:shortVal(B[k]) }); });
+    const action = after===null ? 'delete' : before===null ? 'add' : before===undefined ? 'save' : 'edit';
+    if (action==='edit' && !changes.length) return;   // saved with nothing different
+    let name = AUDIT.name; try{ if (typeof S!=='undefined' && S.meFull) name = S.meFull; }catch(e){}
+    addDoc(collection(fs, 'auditlog'), { at:new Date().toISOString(), uid:AUDIT.uid, email:AUDIT.email, name, action, path, changes:changes.slice(0,30), more:Math.max(0, changes.length-30) }).catch(() => {});
+  });
+}
 
 /* password emails carry a "Continue" button back to the app (falls back to a plain email if Firebase hasn't approved the address) */
 const APP_URL = location.origin + '/';
@@ -2708,6 +2815,7 @@ async function start(user){
     showGate(`<div class="gbox"><h1>Not set up yet</h1><p>${esc(email)} is signed in, but it isn’t linked to a Triple-G member. Ask a leader to add you in Admin → Members.</p><button class="btn" id="gOut">Sign out</button></div>`); return;
   }
   hideGate();
+  AUDIT = prof.role==='admin' ? { uid:user.uid, email, name:prof.name||'' } : null;
   window.TG_FB = { auth, auth2, fs, doc, setDoc, createUserWithEmailAndPassword, sendPasswordResetEmail: sendReset, signOut, uid:user.uid, email };
   if (!booted){ booted=true; window.bootDB(db, prof, user); } else location.reload();
 }
