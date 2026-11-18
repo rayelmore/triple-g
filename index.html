@@ -240,6 +240,19 @@ main>*{min-width:0}
 .compact.lb th,.compact.lb td{padding:9px 4px}
 .compact.lb th{font-size:11.5px;letter-spacing:.2px}
 .compact.lb td:nth-child(2){max-width:96px;overflow:hidden;text-overflow:ellipsis}
+.scm{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:grid;place-items:center;padding:14px;overflow:auto}
+.scm .box{background:var(--surface);color:var(--ink);border-radius:18px;max-width:440px;width:100%;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.4)}
+.scm .hd{background:var(--green-2);color:#fff;padding:14px 16px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
+.scm .hd b{font:800 20px var(--display)} .scm .hd small{display:block;opacity:.85;font-size:13px}
+.scm .x{background:rgba(255,255,255,.18);color:#fff;border:0;width:38px;height:38px;border-radius:50%;font-size:20px;cursor:pointer}
+.scm .tl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:14px 14px 4px}
+.scm .tl div{background:var(--bg);border-radius:12px;padding:8px 4px;text-align:center}
+.scm .tl span{display:block;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.scm .tl b{font:800 24px var(--display);color:var(--green-2)}
+.scm .hg{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:4px 14px}
+.scm .hg div{background:var(--bg);border-radius:10px;text-align:center;padding:5px 0 4px;font-size:11.5px;color:var(--muted)}
+.scm .hg b{display:grid;place-items:center;margin:2px auto;width:30px;height:30px;border-radius:8px;font:800 18px var(--display);color:var(--ink)}
+.scm .hg em{display:block;font-style:normal;font-weight:700;color:var(--ink)}
 .askwrap{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50;padding:20px}
 .askbox{background:var(--surface);color:var(--ink);border-radius:16px;padding:18px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .askbox p{margin:0 0 14px;font-size:17px}
@@ -618,10 +631,10 @@ V.results = () => {
   const rounds = allRounds(); const d = S.resDate || rounds[rounds.length-1].date; const r = rounds.find(x=>x.date===d);
   const rows = ROSTER().map(p=>{ const s=scoresFor(p), v=s[r.date]; if (v===undefined) return null; const q = quotaBefore(p,s,r.date); return {p,v,q,plus: typeof v==='number' && q!==null ? v-q : null}; }).filter(Boolean)
     .sort((a,b)=>(b.plus??-99)-(a.plus??-99));
-  return `<main><div class="pagehead"><h1>Results</h1></div>
+  return `${scModal()}<main><div class="pagehead"><h1>Results</h1></div>
   <select id="resDate" aria-label="Choose a round">${[...rounds].reverse().map(x=>`<option value="${x.date}"${x.date===r.date?' selected':''}>${fmt(x.date,{month:'short',day:'numeric',year:'numeric'})} · ${esc(x.course)}</option>`).join('')}</select>
   <div class="card" style="padding:4px 16px"><div class="list">
-  ${rows.length ? rows.map((x,i)=>`<div class="li"><span class="medal">${typeof x.v==='number' && x.plus!==null && i<3 ? i+1 : ''}</span>
+  ${rows.length ? rows.map((x,i)=>`<div class="li tap" data-sco="${esc(x.p.id)}" role="button" tabindex="0" style="cursor:pointer"><span class="medal">${typeof x.v==='number' && x.plus!==null && i<3 ? i+1 : ''}</span>
     <div><div class="name">${esc(shortName(x.p.name))}${x.p.guest?' <span class="pill neutral">Guest</span>':''}</div><div class="small muted">${x.v==='NS'?'No show':`${x.v} pts${x.q!==null?` · quota ${x.q}`:' · new player'}`}</div></div>
     ${x.v==='NS'?'<span class="pill bad">NS</span>':plusHtml(x.plus)}</div>`).join('') : '<div class="li"><span></span><span class="muted">No scores recorded for this date.</span><span></span></div>'}
   </div></div>${payoutsHTML(r.date, rows)}</main>`;
@@ -1056,7 +1069,7 @@ V.leaderboard = () => {
   const card = id => { const x=L[id]; if (!x?.holes || !pars) return '';
     return `<tr><td colspan="7" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=x.holes[i+1]; return `<span><i>${i+1}</i><b class="${g? scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div>
     <div class="row" style="margin-top:8px;justify-content:space-between"><span class="small muted">To fix a hole, open Scorekeeper and pick that hole.</span>${isAdmin()?`<button class="btn ghost" data-clr="${id}" style="padding:6px 12px">Clear ${esc(sname(id))}'s scores</button>`:''}</div></td></tr>`; };
-  return `<main>${back()}<div class="pagehead"><h1>Live Leaderboard</h1><span class="livepill">LIVE</span></div>
+  return `${scModal()}<main>${back()}<div class="pagehead"><h1>Live Leaderboard</h1><span class="livepill">LIVE</span></div>
   <div class="muted">${fmt(d,{weekday:'long',month:'short',day:'numeric'})} · ${esc(C.name||sch?.course||'')} · Stableford points against quota</div>${dbNote()}
   ${T.confirmed!==true?`<div class="banner">Birdie is set to ${T.birdie} points until leadership confirms it. <a href="#points">Check points</a></div>`:''}
   <a class="btn" href="#score" style="justify-self:start">Score my group</a>
@@ -1265,7 +1278,7 @@ document.addEventListener('click', async e=>{
     catch(err){ live$('scMsg').textContent=noWriteC; }
   }
   else if (b.dataset.clr){ const id=b.dataset.clr; if (!await ask(`Delete all of ${sname(id)}'s scores and closest-to-the-pin entries for this round?`)) return;
-    try{ await clearPlayer(d, id); S.lbOpen=null; render(); }catch(err){ live$('rsMsg').textContent='Could not clear scores. You may not have permission for this.'; } }
+    try{ await clearPlayer(d, id); S.lbOpen=null; S.scOpen=null; render(); }catch(err){ live$('rsMsg').textContent='Could not clear scores. You may not have permission for this.'; } }
   else if (b.id==='resetRound'){ if (!await ask('Delete ALL live scores and closest-to-the-pin entries for this round? This cannot be undone.')) return;
     b.disabled=true; live$('rsMsg').textContent='Clearing…';
     try{ for (const id of Object.keys(S.live[d]||{})) await S.db.doc(`live/${d}/players/${id}`).delete();
@@ -1349,7 +1362,7 @@ document.addEventListener('click', async e=>{
     try{ await S.db.doc('courses/'+k).delete(); S.cEdit=null; if (S.cNew&&S.cNew.k===k) S.cNew=null; render(); }catch(err){ live$('cMsg').textContent=noWrite; } return; }
   if (b.dataset.hole){ S.lbHole=+b.dataset.hole; render(); }
   else if (b.dataset.step){ S.lbHole=Math.min(18,Math.max(1,(S.lbHole||1)+(+b.dataset.step))); render(); }
-  else if (b.dataset.open){ S.lbOpen = S.lbOpen===b.dataset.open ? null : b.dataset.open; render(); }
+  else if (b.dataset.open){ S.scOpen = {d:roundDate(), pid:b.dataset.open}; render(); }
   else if (b.dataset.cedit){ S.cEdit = S.cEdit===b.dataset.cedit ? null : b.dataset.cedit; render(); }
   else if (b.id==='ptsSave'){
     const v={}; let bad=false; PT_KEYS.forEach(([k])=>{ const n=+$('#pt_'+k).value; if(!Number.isInteger(n)||n<-5||n>20) bad=true; v[k]=n; });
@@ -2266,6 +2279,38 @@ async function buildSeason(Y, onStep){
     X.utils.book_append_sheet(wb, ws, name); });
   return {X, wb, file:`Triple-G Season ${Y} Backup (${today}).xlsx`, rounds:rounds.length};
 }
+/* ---------- Player scorecard pop-up (Live Leaderboard and Results) ---------- */
+function scModal(){
+  const o = S.scOpen; if (!o) return '';
+  const d = o.d, pid = o.pid, sch = schedFor(d) || (allRounds().find(r=>r.date===d)||{});
+  ensureLive(d);
+  const pars = courseInfo(sch.course).pars, x = (S.live[d]||{})[pid], has = !!(x && x.holes && Object.keys(x.holes).length && pars);
+  const t = has ? cardTotals(x.holes, pars) : null;
+  const p = PBY[pid], sheet = p ? scoresFor(p)[d] : undefined;
+  const pts = t ? t.pts : (typeof sheet==='number' ? sheet : null);
+  const q = quotaOn(pid, d), plus = pts!==null && q!==null ? pts-q : null;
+  const P = S.pairings && S.pairings[d]; let grp = '—'; if (P && P.groups) P.groups.forEach((g,i)=>{ if (g.includes(pid)) grp = i+1; });
+  const tile = (l,v,style='') => `<div><span>${l}</span><b style="${style}">${v}</b></div>`;
+  const nine = (a,b) => { let g=0,pt=0,n=0; for (let h=a; h<=b; h++){ const v=+x.holes[h]; if (v>0){ g+=v; pt+=holePts(v,pars[h-1]); n++; } } return n ? `${g} · ${pt} pts` : '—'; };
+  return `<div class="scm" id="scm" role="dialog" aria-modal="true" aria-label="${esc(sname(pid))} scorecard"><div class="box">
+    <div class="hd"><div><b>${esc(p ? shortName(p.name) : sname(pid))}</b><small>${fmt(d,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}${sch.course?' · '+esc(courseInfo(sch.course).name||sch.course):''}</small></div><button class="x" id="scmX" aria-label="Close">✕</button></div>
+    <div class="tl">${tile('Points', pts??'—')}${tile('Strokes', t&&t.gross ? t.gross : '—')}${tile('Holes', t ? t.thru : '—')}
+      ${tile('Quota', q??'—')}${tile('+/− Quota', plus===null?'—':(plus>0?'+':'')+plus, plus===null?'':`color:${plus<0?'#c62828':'var(--green-2)'}`)}${tile('Group', grp)}</div>
+    ${has ? `<div class="small" style="padding:8px 16px 4px;font-weight:800;color:var(--muted)">HOLE BY HOLE</div>
+      <div class="hg">${pars.map((par,i)=>{ const g=+x.holes[i+1]; return `<div>H${i+1} · P${par}<b class="${g?scls(g-par):''}">${g||'·'}</b><em>${g?(()=>{ const n=holePts(g,par); return n+(n===1?' pt':' pts'); })():''}</em></div>`; }).join('')}</div>
+      <div class="small muted" style="padding:8px 16px 0;display:flex;justify-content:space-between"><span>Front: ${nine(1,9)}</span><span>Back: ${nine(10,18)}</span></div>`
+      : `<div class="small muted" style="padding:10px 16px">${x ? 'This course’s hole pars aren’t set, so the hole-by-hole card can’t be shown.' : 'Hole-by-hole scores weren’t kept for this round. It was scored before the app or on paper.'}</div>`}
+    ${has && isAdmin() && d===roundDate() ? `<div class="row" style="padding:10px 16px 0;justify-content:flex-end"><button class="btn ghost" data-clr="${esc(pid)}" style="padding:6px 12px">Clear ${esc(sname(pid))}'s scores</button></div><div class="small" id="rsMsg" style="padding:0 16px" role="status"></div>` : ''}
+    <div style="height:14px"></div></div></div>`;
+}
+document.addEventListener('click', e=>{
+  const r = e.target.closest('[data-sco]'); if (r){ S.scOpen = {d: S.resDate || allRounds()[allRounds().length-1].date, pid:r.dataset.sco}; render(); return; }
+  if (S.scOpen && (e.target.id==='scm' || e.target.closest('#scmX'))){ S.scOpen=null; render(); }
+});
+document.addEventListener('keydown', e=>{ if (S.scOpen && e.key==='Escape'){ S.scOpen=null; render(); }
+  else if (e.key==='Enter' && e.target.dataset && e.target.dataset.sco){ e.target.click(); } });
+addEventListener('hashchange', ()=>{ S.scOpen=null; });
+
 /* ---------- Game Coordinator (leaders): who's in, who's paid, pots and groups for the round ----------
    Randy collects skins, Coach collects the CTP + quota game. Each checkmark is its own record
    (gcpay/<date>/marks/<player>_<skins|game>), so two leaders can check boxes at the same time. */
