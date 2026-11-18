@@ -607,8 +607,8 @@ function payoutsHTML(d, rows){
   const ctpWins = c ? c.C.filter(x=>x.list.length) : [];
   return `<section class="card"><div class="pagehead"><h2 style="margin:0">Payouts</h2><button class="btn ghost" id="poCopy" data-d="${esc(d)}" style="padding:6px 12px">Copy for group chat</button></div>
   <div class="small" id="poMsg" role="status"></div>
-  <h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money$(q.pot)}</span></h3>
-  <div class="list">${q.pays.length ? q.pays.map(x=>line(`${x.tie?'T':''}${x.place}`, `${esc(sname(x.pid))} <span class="small muted">${x.plus>=0?'+':''}${x.plus}</span>`, x.amt)).join('') : '<div class="muted small">No one with a quota scored this round.</div>'}</div>
+  ${q.off ? '' : `<h3 style="margin:12px 0 2px">Quota game <span class="small muted">· ${q.n} in · pot ${money$(q.pot)}</span></h3>
+  <div class="list">${q.pays.length ? q.pays.map(x=>line(`${x.tie?'T':''}${x.place}`, `${esc(sname(x.pid))} <span class="small muted">${x.plus>=0?'+':''}${x.plus}</span>`, x.amt)).join('') : '<div class="muted small">No one with a quota scored this round.</div>'}</div>`}
   ${k ? `<h3 style="margin:14px 0 2px">Skins <span class="small muted">· ${k.players} in · pot ${money$(k.pot)} · ${k.won} won</span></h3>
   <div class="list">${k.winners.length ? k.winners.map(w=>line(`${w.n}×`, esc(sname(w.pid)), w.amt)).join('') : '<div class="muted small">No skins won — every low score was tied or over par.</div>'}</div>` : ''}
   ${c ? `<h3 style="margin:14px 0 2px">Closest to the pin <span class="small muted">· ${c.players} in · pot ${money$(c.pot)}</span></h3>
@@ -621,7 +621,7 @@ function payoutsHTML(d, rows){
 }
 function payoutText(d){
   const sr = SIDE_KEY(d) ? sideRound(d) : null, r = sr || allRounds().find(x=>x.date===d), P = payoutData(d, sr ? sidePayRows(d) : undefined), q=P.q, k=P.k, c=P.c;
-  let t = `3G ${sr?'side round ':''}payouts · ${fmt(sr?sr.date:d,{month:'short',day:'numeric'})} ${r?r.course:''}\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners');
+  let t = `3G ${sr?'side round ':''}payouts · ${fmt(sr?sr.date:d,{month:'short',day:'numeric'})} ${r?r.course:''}` + (q.off ? '' : `\nQuota game (pot ${money$(q.pot)}, ${q.n} in)\n` + (q.pays.map(x=>`${x.tie?'T':''}${x.place}. ${sname(x.pid)} ${x.plus>=0?'+':''}${x.plus} · ${money$(x.amt)}`).join('\n') || 'No winners'));
   if (k) t += `\n\nSkins (pot ${money$(k.pot)})\n` + (k.winners.map(w=>`${sname(w.pid)} ${w.n} skin${w.n>1?'s':''} · ${money$(w.amt)}`).join('\n') || 'No skins won');
   if (c){ const w=c.C.filter(x=>x.list.length); t += `\n\nClosest to the pin (pot ${money$(c.pot)})\n` + (w.map(x=>`#${x.h} ${sname(x.list[0].pid)} ${ftin(x.list[0])} · ${money$(c.pay)}`).join('\n') || 'No entries'); }
   const R=roundDiff(P);
@@ -939,7 +939,7 @@ const sname = id => SNAME[id] || SIDEN[id] || id;
 // The $5 game: $2 of each $5 funds closest to the pin, $3 funds the quota game paid 60/30/10 (3G rules, Nov 8 2026)
 const GAME_DEFAULT = {skins:10, ctp:5, ctpShare:2, qSplit:[60,30,10]};
 function games(){ return {...GAME_DEFAULT, ...(S.games||{})}; }
-function gamesFor(d){ if (SIDE_KEY(d)){ const r=sideRound(d), g=games(); return {...g, ...((r&&r.buyIn)||{})}; } return games(); }
+function gamesFor(d){ if (SIDE_KEY(d)){ const r=sideRound(d), g=games(), b=(r&&r.buyIn)||{}, c=b.ctpShare??g.ctpShare; return {...g, skins:b.skins??g.skins, ctp:c, ctpShare:c, noQuota:true}; } return games(); }   // side rounds: skins + closest to the pin only, no quota game
 
 /* ---- Skins (Scrolf settings: gross score, 1 winner per hole, skin must be par or better, even split across wins, no carryover) ---- */
 /* who was in each side game on a given date (current round: live check-ins; past rounds: saved check-ins) */
@@ -1011,6 +1011,7 @@ function ensureLive(d){
 /* ---- Live Leaderboard + Skins + Contests ---- */
 /* ---- Quota game ($3 of the $5): top 3 points over quota ---- */
 function quotaGame(d, rows){
+  if (SIDE_KEY(d)) return {pot:0, share:0, split:[], n:0, pays:[], unranked:0, ctpOnly:0, off:true};   // side rounds have no quota game
   const G=gamesFor(d), share=G.ctp-G.ctpShare, split=G.qSplit||[60,30,10];
   const inAll = rows.filter(r=>inGameOn(d, r.pid, 'ctp'));
   const inG = inAll.filter(r=>quotaOn(r.pid, d)!==null);          // no quota = closest to the pin only, not in the quota pot
@@ -1055,7 +1056,7 @@ function contestsTable(d, pars){
   </tbody></table></div>
   ${Object.keys(by).length?`<div class="tablewrap" style="margin-top:10px"><table class="compact"><thead><tr><th>Player</th><th class="num">CTPs</th><th class="num">Winnings</th></tr></thead><tbody>
   ${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<tr><td>${esc(sname(p))}</td><td class="num">${n}</td><td class="num">${money$(payR(n*M.value))}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <div class="small muted" style="margin-top:6px">${money$(gamesFor(d).ctpShare)} of each ${money$(gamesFor(d).ctp)} goes here. The pot is split evenly among the par 3s that have a winner.</div></section>`;
+  <div class="small muted" style="margin-top:6px">${gamesFor(d).noQuota ? `${money$(gamesFor(d).ctpShare)} per player.` : `${money$(gamesFor(d).ctpShare)} of each ${money$(gamesFor(d).ctp)} goes here.`} The pot is split evenly among the par 3s that have a winner.</div></section>`;
 }
 V.leaderboard = () => {
   const d = roundDate(), sch = schedFor(d), L = S.live[d] || {};
@@ -2252,7 +2253,7 @@ async function buildSeason(Y, onStep){
     me.push([shortName(p.name), nick(p.name), p.guest?'Guest':'Member', p.inactive?'No':'Yes', p.phone||'', p.email||'', rounds.filter(r=>typeof scoresFor(p)[r.date]==='number').length, endQ(p)??'', e?String(e.at).slice(0,10):'']); });
   sheets.push(['Members', me]);
   // Side rounds (kept separate from Wednesday)
-  const sr=[['Date','Course','Player','Member or guest',...Array.from({length:18},(_,i)=>'H'+(i+1)),'Gross','To par','Points','Skins ($)','Closest to pin ($)','Quota game ($)','Total won ($)']];
+  const sr=[['Date','Course','Player','Member or guest',...Array.from({length:18},(_,i)=>'H'+(i+1)),'Gross','To par','Points','Skins ($)','Closest to pin ($)','Total won ($)']];
   for (const R2 of Object.values(S.side||{}).filter(x=>x&&inY(x.date)&&x.date<=today).sort((a,b)=>a.date.localeCompare(b.date))){
     const k='sr:'+R2.id; onStep && onStep(`Gathering side round ${fmt(R2.date)}…`);
     if (!S.sideSubs[R2.id]){ const [pl, ct] = await Promise.all([bkGet(`side/${R2.id}/players`), bkGet(`side/${R2.id}/ctp`)]); const m={}; pl.forEach(v=>{ if(v&&v.pid){ m[v.pid]=v; if (v.guest) SIDEN[v.pid]=`${v.first||''} ${String(v.last||'')[0]||''}.`.trim(); } }); S.live[k]=m; const c={}; ct.forEach(v=>{ if(v&&v.pid&&v.hole) c[v.hole+'_'+v.pid]=v; }); S.ctp[k]=c; }
@@ -2260,7 +2261,7 @@ async function buildSeason(Y, onStep){
     const add=(pid,f,a)=>{ won[pid]=won[pid]||{s:0,c:0,q:0}; won[pid][f]+=a; };
     P.q.pays.forEach(x=>add(x.pid,'q',x.amt)); if (P.k) P.k.winners.forEach(w=>add(w.pid,'s',w.amt)); if (P.c) P.c.C.filter(x=>x.list.length).forEach(x=>add(x.list[0].pid,'c',P.c.pay));
     rows2.sort((a,b)=>a.toPar-b.toPar).forEach(x=>{ const w=won[x.pid]||{s:0,c:0,q:0}, v=(S.live[k]||{})[x.pid]||{};
-      sr.push([R2.date, R2.course, v.guest?`${v.first||''} ${v.last||''}`.trim():nm(x.pid), v.guest?'Guest':'Member', ...Array.from({length:18},(_,i)=>+x.holes[i+1]||''), x.gross??'', x.toPar??'', x.pts, w.s||'', w.c||'', w.q||'', (w.s+w.c+w.q)||'']); });
+      sr.push([R2.date, R2.course, v.guest?`${v.first||''} ${v.last||''}`.trim():nm(x.pid), v.guest?'Guest':'Member', ...Array.from({length:18},(_,i)=>+x.holes[i+1]||''), x.gross??'', x.toPar??'', x.pts, w.s||'', w.c||'', (w.s+w.c)||'']); });
   }
   sheets.push(['Side rounds', sr]);
   // Summary (first tab)
@@ -2493,7 +2494,7 @@ V.side = () => {
   const card = r => { sideSub(r.id); const n=Object.keys(S.live['sr:'+r.id]||{}).length;
     return `<a class="li" href="#sround" data-sopen="${esc(r.id)}" style="grid-template-columns:1fr auto;text-decoration:none;color:inherit"><div><div class="name">${esc(r.course||'Course')}</div><div class="small muted">${sideWhen(r)}${r.teeBox?' · '+esc(r.teeBox):''} · ${n} player${n===1?'':'s'}${r.by?' · started by '+esc(r.by):''}</div></div><span class="pill ${r.date===t?'good':''}">${r.date===t?'Today':r.date>t?'Upcoming':'Open'}</span></a>`; };
   return `<main><a href="#home" class="small">← Home</a><div class="pagehead"><h1>Side Rounds</h1></div>
-  <div class="muted">Ad hoc rounds on other days (like Mondays and Fridays). Same scoring, skins and closest to the pin as Wednesday, but nothing here counts toward Wednesday scores or quotas.</div>${dbNote()}
+  <div class="muted">Ad hoc rounds on other days (like Mondays and Fridays). Same scoring, skins and closest to the pin as Wednesday — no quota game. Nothing here counts toward Wednesday scores or quotas.</div>${dbNote()}
   <a class="btn big" href="#snew" data-snew="1" style="display:block;text-align:center;margin:12px 0">+ Start a side round</a>
   <section class="card"><h2>Today &amp; upcoming</h2><div class="list">${up.length?up.map(card).join(''):'<div class="muted small">No side rounds scheduled. Tap “Start a side round” to set one up.</div>'}</div></section>
   ${past.length?`<section class="card"><h2>Past side rounds</h2><div class="list">${more.map(r=>`<a class="li" href="#sround" data-sopen="${esc(r.id)}" style="grid-template-columns:1fr auto;text-decoration:none;color:inherit"><div><div class="name">${esc(r.course||'Course')}</div><div class="small muted">${sideWhen(r)}</div></div><span class="small muted">View</span></a>`).join('')}</div>
@@ -2501,15 +2502,15 @@ V.side = () => {
 };
 
 V.snew = () => {
-  const ed = S.sEdit ? sideRound('sr:'+S.sEdit) : null, g=games(), b={...g, ...((ed&&ed.buyIn)||{})};
+  const ed = S.sEdit ? sideRound('sr:'+S.sEdit) : null, g=games(), b=ed ? gamesFor('sr:'+ed.id) : {...g, ctp:g.ctpShare};
   return `<main><a href="${ed?'#sround':'#side'}" class="small">← ${ed?'Back to round':'Side Rounds'}</a><div class="pagehead"><h1>${ed?'Round settings':'Start a side round'}</h1></div>${dbNote()}
   <section class="card"><div class="form">
     <label>Date<input type="date" id="snDate" value="${esc(ed?.date||todayISO())}"></label>
     <label>Course<input type="text" id="snCourse" list="snCourses" value="${esc(ed?.course||'')}" autocomplete="off" placeholder="Start typing a course"><datalist id="snCourses">${knownCourses().map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>
     <div class="row"><label style="flex:1">Tee time<input type="time" id="snTime" value="${esc(ed?.time?fromHrs(ed.time):'')}"></label><label style="flex:1">Tee box <span class="muted small">(optional)</span><input type="text" id="snTee" value="${esc(ed?.teeBox||'')}" placeholder="e.g. White"></label></div>
     <div class="small muted" style="margin-top:4px"><b>Buy-ins</b> (same as Wednesday unless you change them)</div>
-    <div class="row"><label style="flex:1">Skins $<input type="number" id="snSkins" min="0" max="100" inputmode="numeric" value="${esc(b.skins)}"></label><label style="flex:1">Game $ <span class="muted small">(quota + closest to pin)</span><input type="number" id="snGame" min="0" max="100" inputmode="numeric" value="${esc(b.ctp)}"></label></div>
-    <div class="small muted">Of the game buy-in, ${money$(g.ctpShare)} goes to closest to the pin and the rest to the quota game, paid ${(g.qSplit||[60,30,10]).join('/')}. Quotas come from Wednesday and are not changed by side rounds.</div>
+    <div class="row"><label style="flex:1">Skins $<input type="number" id="snSkins" min="0" max="100" inputmode="numeric" value="${esc(b.skins)}"></label><label style="flex:1">Closest to pin $<input type="number" id="snGame" min="0" max="100" inputmode="numeric" value="${esc(b.ctp)}"></label></div>
+    <div class="small muted">Side rounds play skins and closest to the pin only. There's no quota game.</div>
     <div class="row"><button class="btn" id="snSave" ${S.dbStatus==='ready'?'':'disabled'}>${ed?'Save changes':'Create round'}</button><a class="btn ghost" href="${ed?'#sround':'#side'}">Cancel</a><span class="small" id="snMsg" role="status"></span></div>
     ${ed && sideCan(ed)?'<button class="linkbtn danger" id="snDel" style="margin-top:10px">Delete this side round</button>':''}
   </div></section></main>`;
@@ -2551,15 +2552,15 @@ function sideScoreHTML(r, k){
 
 function sideBoardHTML(r, k){
   const pars=courseInfo(r.course).pars, L=S.live[k]||{};
-  const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.plus??-999)-(a.plus??-999));
+  const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.pts||0)-(a.pts||0));
   let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
   const tp = n => n===0?'E':(n>0?'+'+n:''+n);
-  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Pts</th><th class="num">+/− quota</th></tr></thead><tbody>
-  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.thru===18?'F':x.thru}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td><td class="num">${plusHtml(x.plus)}</td></tr>
-    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="6" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
-    :'<tr><td colspan="6" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
-  <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Quota +/− uses each player's Wednesday quota (guests and players without a quota show —). Tap a player to see the card.</div>
-  ${rows.length?skinsTable(k)+contestsTable(k, pars)+quotaTable(k, rows):''}`;
+  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Pts</th></tr></thead><tbody>
+  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.thru===18?'F':x.thru}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td></tr>
+    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
+    :'<tr><td colspan="5" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
+  <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Tap a player to see the card.</div>
+  ${rows.length?skinsTable(k)+contestsTable(k, pars):''}`;
 }
 
 V.sround = () => {
@@ -2574,12 +2575,12 @@ V.sround = () => {
     <section class="card"><h2>In this round</h2><div class="list">${ids.length?ids.map(id=>{ const v=L[id], can=canEditPl(r,v), sc=v.holes&&Object.keys(v.holes).length;
       return `<div class="li" style="grid-template-columns:1fr auto auto auto;align-items:center"><div><div class="name">${esc(sname(id))}${id===me?' <span class="small muted">(you)</span>':''}</div><div class="small muted">${esc(sideFull(id))}${v.guest?` · guest of ${esc(sname(v.host)||'')}`:''}${sc?` · ${cardTotals(v.holes,courseInfo(r.course).pars).thru} holes scored`:''}</div></div>
         <label class="small" title="Skins ${money$(G.skins)}"><input type="checkbox" data-sgm="skins" data-pid="${id}" ${v.skins!==false?'checked':''} ${can?'':'disabled'}> Skins</label>
-        <label class="small" title="Game ${money$(G.ctp)}"><input type="checkbox" data-sgm="ctp" data-pid="${id}" ${v.ctp!==false?'checked':''} ${can?'':'disabled'}> Game</label>
+        <label class="small" title="Closest to the pin ${money$(G.ctp)}"><input type="checkbox" data-sgm="ctp" data-pid="${id}" ${v.ctp!==false?'checked':''} ${can?'':'disabled'}> CTP</label>
         ${can?`<button class="xbtn" data-srm="${id}" aria-label="Remove ${esc(sname(id))}">×</button>`:'<span></span>'}</div>`; }).join(''):'<div class="muted small">No one yet.</div>'}</div>
-      <div class="small muted" style="margin-top:6px">Skins ${money$(G.skins)} · Game ${money$(G.ctp)} (${money$(G.ctpShare)} closest to the pin, ${money$(G.ctp-G.ctpShare)} quota game). Uncheck a box if a player isn't in that game.</div>
+      <div class="small muted" style="margin-top:6px">Skins ${money$(G.skins)} · Closest to the pin ${money$(G.ctp)}. No quota game in side rounds. Uncheck a box if a player isn't in that game.</div>
       <div class="small" id="sPlMsg" role="status"></div></section>
     ${sideCan(r)||L[me]?`<section class="card"><h2>Add a member</h2><div class="row"><select id="sAddWho" aria-label="Member" style="flex:1"><option value="">Choose a member…</option>${pool.map(p=>`<option value="${p.id}">${esc(shortName(p.name))}</option>`).join('')}</select><button class="btn" id="sAdd">Add</button></div></section>`:''}
-    ${L[me]||sideCan(r)?`<section class="card"><h2>Add a guest</h2><div class="row"><input type="text" id="sgFirst" placeholder="First name" aria-label="Guest first name" style="flex:1"><input type="text" id="sgLast" placeholder="Last name" aria-label="Guest last name" style="flex:1"><button class="btn" id="sAddGuest">Add guest</button></div><div class="small muted">Guests play skins and closest to the pin. They have no quota, so they aren't in the quota pot.</div></section>`:''}`;
+    ${L[me]||sideCan(r)?`<section class="card"><h2>Add a guest</h2><div class="row"><input type="text" id="sgFirst" placeholder="First name" aria-label="Guest first name" style="flex:1"><input type="text" id="sgLast" placeholder="Last name" aria-label="Guest last name" style="flex:1"><button class="btn" id="sAddGuest">Add guest</button></div><div class="small muted">Guests play skins and closest to the pin, same as everyone else.</div></section>`:''}`;
   } else if (tab==='score') body = sideScoreHTML(r, k);
   else if (tab==='board') body = sideBoardHTML(r, k);
   else body = payoutsHTML(k, sidePayRows(k));
@@ -2618,7 +2619,7 @@ document.addEventListener('click', async e=>{
     if (!date || !course){ m.textContent='Enter the date and course.'; return; }
     const sk=Math.max(0,+$('#snSkins').value||0), gm=Math.max(0,+$('#snGame').value||0), g=games();
     const ed=S.sEdit?sideRound('sr:'+S.sEdit):null, id=ed?ed.id:`${date}-${Math.random().toString(36).slice(2,7)}`;
-    const doc={...(ed||{}), id, date, course, time:toHrs($('#snTime').value), teeBox:$('#snTee').value.trim(), buyIn:{skins:sk, ctp:gm, ctpShare:Math.min(g.ctpShare, gm)}, ...(ed?{}:{by:S.meFull||'', byPid:meId()||'', createdAt:new Date().toISOString()}), updatedAt:new Date().toISOString()};
+    const doc={...(ed||{}), id, date, course, time:toHrs($('#snTime').value), teeBox:$('#snTee').value.trim(), buyIn:{skins:sk, ctp:gm, ctpShare:gm}, ...(ed?{}:{by:S.meFull||'', byPid:meId()||'', createdAt:new Date().toISOString()}), updatedAt:new Date().toISOString()};
     b.disabled=true; m.textContent='Saving…';
     try{ await S.db.doc('side/'+id).set(doc); S.side[id]=doc;
       if (!ed && meId() && PBY[meId()]) await S.db.doc(`side/${id}/players/${meId()}`).set({pid:meId(), skins:true, ctp:true, addedBy:S.meFull||'', at:new Date().toISOString()});
