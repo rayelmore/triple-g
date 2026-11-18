@@ -430,7 +430,10 @@ function stats(p){
     noShows: Object.values(s).filter(v=>v==='NS').length };
 }
 const ROSTER = () => SEED.players.map(p => ({...p, st:stats(p)}));
-const DUES = (()=>{ const m={}; SEED.membership.forEach(x=>{ m[key(x.name)] = x; }); return m; })();
+// a member listed twice in the dues sheet (e.g. Anthoine "Moe" / "Moe C" Corpening) becomes one row, keeping every year he paid
+(()=>{ const first={}; SEED.membership = SEED.membership.filter(x=>{ const k=key(x.name), f=first[k]; if (!f){ first[k]=x; return true; }
+  Object.keys(x).forEach(f2=>{ if (f2!=='name' && x[f2]!=null && f[f2]==null) f[f2]=x[f2]; }); return false; }); })();
+const DUES = (()=>{ const m={}; SEED.membership.forEach(x=>{ const k=key(x.name); if (!m[k]) m[k] = x; }); return m; })();
 function duesFor(p){ return DUES[key(p.name)] || null; }
 function teeHour(t){ const m = String(t||'').match(/(\d{1,2})(\d{2})/); return m ? [+m[1], +m[2]] : [8,0]; }
 function fmtTee(t){ const [h,m] = teeHour(t); const ap = h>=12?'PM':'AM'; return `${((h+11)%12)+1}:${String(m).padStart(2,'0')} ${ap}`; }
@@ -684,6 +687,63 @@ V.dues = () => {
   ${rows.map(m=>`<tr><td>${esc(shortName(m.name))}</td><td>${pill(m.y2026,m.memo2026)}</td><td>${pill(m.y2027,m.memo2027)}</td>${isAdmin()?`<td><button class="btn ghost" style="padding:5px 10px" data-dpe="${esc(m.name)}" ${S.dbStatus==='ready'?'':'disabled'}>Record</button></td>`:''}</tr>`).join('')}</tbody></table></div></main>`;
 };
 
+/* ---------- Treasury: dues recorded in the app + funds added by leaders ----------
+   Dues count only the money that's new compared with the spreadsheet (the sheet's balance already includes what it had).
+   Funds are saved as treasury/<id>; only "Balance correction" can be a negative amount. */
+const TF_REASONS = ['Rounding leftovers','Unclaimed winnings','Guest fees','Donation','Event money','Refund received','Balance correction','Other'];
+S.treas = {};
+function treasuryTotals(){
+  let dues = 0;
+  Object.values(S.duesPay||{}).forEach(d=>{ if (!d || !d.name || !d.year) return; const row = DUES[key(d.name)], o = row && DUES_ORIG.get(row);
+    dues += (+d.amount||0) - (+(o && o['y'+d.year])||0); });
+  const funds = Object.values(S.treas||{}).reduce((a,t)=>a+(+t.amount||0),0);
+  return { dues: Math.round(dues*100)/100, funds: Math.round(funds*100)/100 };
+}
+function tfForm(){
+  const e = S.tfEdit;
+  if (!e) return `<div class="row" style="margin-top:10px"><button class="btn" id="tfNew" ${S.dbStatus==='ready'?'':'disabled'}>＋ Add funds</button><span class="small" id="tfMsg" role="status"></span></div>`;
+  const corr = e.reason==='Balance correction', needNote = corr || e.reason==='Other';
+  return `<div class="form" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><b>Add funds</b>
+    <label>Reason<select id="tfReason">${TF_REASONS.map(r=>`<option${r===e.reason?' selected':''}>${r}</option>`).join('')}</select></label>
+    ${corr ? `<label>Correction<select id="tfDir"><option value="1"${e.dir!==-1?' selected':''}>Add to the balance</option><option value="-1"${e.dir===-1?' selected':''}>Take away from the balance</option></select></label>` : ''}
+    <label>Amount ($)<input type="number" id="tfAmt" min="0.01" step="0.01" inputmode="decimal" value="${esc(e.amount||'')}"></label>
+    <label>Date<input type="date" id="tfDate" value="${esc(e.date)}"></label>
+    <label>Note${needNote?'':' (optional)'}<input type="text" id="tfNote" maxlength="100" value="${esc(e.note||'')}" placeholder="${corr?'e.g. matched to Cash App balance 11/17':e.reason==='Other'?'What was it?':'e.g. Nov 18 skins rounding'}"></label>
+    <div class="row"><button class="btn" id="tfSave">Save</button><button class="btn ghost" id="tfCancel">Cancel</button></div>
+    <div class="small" id="tfMsg" role="status"></div></div>`;
+}
+function tfList(){
+  const L = Object.values(S.treas||{}).sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.at||'').localeCompare(a.at||''));
+  if (!L.length) return '';
+  const n = S.tfAll ? L.length : 5;
+  return `<div style="margin-top:12px"><div class="small" style="font-weight:800;color:var(--muted)">Funds added</div><div class="list">${L.slice(0,n).map(t=>`<div class="li" style="grid-template-columns:1fr auto auto;align-items:center">
+    <div><b>${esc(t.reason)}</b><div class="small muted">${t.date?fmt(t.date,{month:'short',day:'numeric',year:'numeric'}):''}${t.note?' · '+esc(t.note):''}${t.by?' · '+esc(t.by):''}</div></div>
+    <b style="color:${+t.amount<0?'var(--bad, #b3261e)':'var(--green-2)'}">${+t.amount<0?'−':'+'}${money$(Math.abs(+t.amount||0))}</b>
+    <button class="btn ghost" style="padding:4px 10px" data-tfdel="${esc(t._id)}" aria-label="Remove this entry">Remove</button></div>`).join('')}</div>
+    ${L.length>5?`<button class="btn ghost" style="margin-top:6px;padding:5px 12px" id="tfMore">${S.tfAll?'Show fewer':'Show all '+L.length}</button>`:''}</div>`;
+}
+document.addEventListener('change', e=>{ const t=e.target; if (!S.tfEdit) return;
+  if (t.id==='tfReason' || t.id==='tfDir'){ Object.assign(S.tfEdit, { amount:$('#tfAmt')?.value||'', date:$('#tfDate')?.value||S.tfEdit.date, note:$('#tfNote')?.value||'' });
+    if (t.id==='tfReason') S.tfEdit.reason=t.value; else S.tfEdit.dir=+t.value; render(); } });
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('#tfNew,#tfCancel,#tfSave,#tfMore,[data-tfdel]'); if (!b || !isAdmin()) return;
+  if (b.id==='tfNew'){ S.tfEdit = { reason:TF_REASONS[0], dir:1, amount:'', date:todayISO(), note:'' }; render(); return; }
+  if (b.id==='tfCancel'){ S.tfEdit=null; render(); return; }
+  if (b.id==='tfMore'){ S.tfAll=!S.tfAll; render(); return; }
+  if (b.dataset.tfdel){ const t=S.treas[b.dataset.tfdel]; if (!t) return;
+    if (!await ask(`Remove “${t.reason}” ${money$(Math.abs(+t.amount||0))}? The Treasury will change back.`)) return;
+    try{ await S.db.doc('treasury/'+t._id).delete(); } catch(err){ live$('tfMsg').textContent='Couldn’t remove it. Try again.'; } return; }
+  const ed=S.tfEdit, msg=live$('tfMsg'); if (!ed) return;
+  const amt = Math.round(+$('#tfAmt').value*100)/100, note = $('#tfNote').value.trim().slice(0,100);
+  if (!(amt>0)){ msg.textContent='Enter an amount.'; return; }
+  if ((ed.reason==='Balance correction' || ed.reason==='Other') && !note){ msg.textContent='Add a short note saying what this was.'; return; }
+  const id = 'tf'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const rec = { _id:id, reason:ed.reason, amount: ed.reason==='Balance correction' && ed.dir===-1 ? -amt : amt, date: $('#tfDate').value || todayISO(), note, by:S.meFull||'', at:new Date().toISOString() };
+  b.disabled=true; msg.textContent='Saving…';
+  try{ await S.db.doc('treasury/'+id).set(rec); S.treas = {...S.treas, [id]:rec}; S.tfEdit=null; render(); live$('tfMsg').textContent = `Saved: ${rec.reason} ${rec.amount<0?'−':'+'}${money$(Math.abs(rec.amount))}`; }
+  catch(err){ b.disabled=false; msg.textContent = /permission/i.test(String(err&&(err.code||err.message))) ? 'The database rule for the Treasury isn’t published yet (Firebase → Firestore → Rules).' : 'Couldn’t save. Check your connection and try again.'; }
+});
+
 /* ---------- Dues payments recorded in the app (layered over the spreadsheet) ----------
    Each payment is saved as dues/<member>_<year>. The spreadsheet values stay underneath,
    so "Mark unpaid" or a corrected entry simply replaces what the sheet had. */
@@ -705,7 +765,7 @@ function applyDues(){
     m[y] = paid ? +d.amount : null;
     m[mo] = paid ? [mdy(d.paidOn), d.method, d.note].filter(Boolean).join(' ') : null;
   });
-  Object.keys(DUES).forEach(k=>delete DUES[k]); SEED.membership.forEach(x=>{ DUES[key(x.name)]=x; });
+  Object.keys(DUES).forEach(k=>delete DUES[k]); SEED.membership.forEach(x=>{ const k=key(x.name); if (!DUES[k]) DUES[k]=x; });
 }
 function dpNames(){
   const m=new Map(); SEED.membership.forEach(x=>m.set(key(x.name), x.name));
@@ -1417,9 +1477,11 @@ V.expenses = () => {
   <div class="muted">Manage requests and approvals.</div>${dbNote()}
   <div class="stat3"><div><b>${money$(sum('pending'))}</b><span>pending</span></div><div><b>${money$(sum('approved'))}</b><span>approved, unpaid</span></div><div><b>${money$(sum('paid'))}</b><span>paid out</span></div></div>
   ${(()=>{ const bal = SEED.ledger.find(x=>/ending account/i.test(x.name)); const b = bal && +bal.y2026; if (!b) return `<div class="small muted">Dues collected: 2026 ${money$(dues(2026))} · 2027 ${money$(dues(2027))} so far.</div>`;
-    const left = b - sum('approved') - sum('paid');
+    const T = treasuryTotals(), out = sum('approved') + sum('paid'), left = b + T.dues + T.funds - out;
     return `<section class="card"><div class="pagehead"><h2 style="margin:0">Treasury</h2><b style="font:800 24px var(--display)">${money$(left)}</b></div>
-    <div class="small muted">Spreadsheet ending balance ${money$(b)}, minus ${money$(sum('approved')+sum('paid'))} approved or paid here. Dues collected: 2026 ${money$(dues(2026))} · 2027 ${money$(dues(2027))}.</div></section>`; })()}
+    <div class="small muted">Spreadsheet ending balance ${money$(b)}${T.dues?` ${T.dues>0?'+':'−'} ${money$(Math.abs(T.dues))} dues recorded in the app`:''}${T.funds?` ${T.funds>0?'+':'−'} ${money$(Math.abs(T.funds))} funds added`:''} − ${money$(out)} approved or paid here.</div>
+    <div class="small muted">Dues collected: 2026 ${money$(dues(2026))} · 2027 ${money$(dues(2027))}.</div>
+    ${tfForm()}${tfList()}</section>`; })()}
   <div class="seg" role="group" aria-label="Filter">${['pending','approved','paid','denied','all'].map(k=>`<button data-exf="${k}" aria-pressed="${k===f}">${k[0].toUpperCase()+k.slice(1)} (${k==='all'?all.length:all.filter(r=>reqStatus(r._id)===k).length})</button>`).join('')}</div>
   <section class="card" style="padding:4px 16px">${rows.length ? rows.map(r=>{ const s=reqStatus(r._id), a=S.approvals[r._id];
     return `<div class="req"><div class="top"><b>${esc(r.what)}</b><span class="amt">${money$(+r.amount||0)}</span></div>
@@ -2271,8 +2333,8 @@ document.addEventListener('change', async e=>{ const t=e.target; if (!t.dataset 
 /* ---------- Change History (organizer only) ---------- */
 const CH_OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];   // must match firestore.rules
 const isOwner = () => isAdmin() && CH_OWNERS.includes((S.email||'').toLowerCase());
-const CH_AREA = { gcpay:'Game day payments', dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
-const CH_FIELD = { paid:'Paid', amt:'Amount', kind:'Game', amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
+const CH_AREA = { treasury:'Treasury', gcpay:'Game day payments', dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
+const CH_FIELD = { reason:'Reason', date:'Date', paid:'Paid', amt:'Amount', kind:'Game', amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
 const CH_VERB = { add:'Added', edit:'Changed', delete:'Removed', save:'Saved' };
 const chArea = p => CH_AREA[String(p).split('/')[0]] || String(p).split('/')[0];
 const chWho = e => (S.users && S.users[e.uid] && S.users[e.uid].name) || e.name || e.email || 'Unknown';
@@ -2289,6 +2351,7 @@ function chWhat(p){
     case 'roster': case 'photos': case 'ethics': case 'guests': return nm(s[1]);
     case 'users': return (S.users&&S.users[s[1]]&&S.users[s[1]].name) || 'a login';
     case 'sched': case 'pairings': case 'rounds': return dt(s[1]);
+    case 'treasury': { const t=S.treas&&S.treas[s[1]]; return t ? `${t.reason} · ${money$(Math.abs(+t.amount||0))}` : 'Treasury entry'; }
     case 'gcpay': { const [pid,k]=String(s[3]||'').split('_'); return `${nm(pid)} · ${k==='skins'?'Skins':'CTP + Quota'} · ${dt(s[1])}`; }
     case 'dues': { const d=S.duesPay&&S.duesPay[s[1]]; return d ? `${shortName(d.name)} · ${d.year} dues` : String(s[1]).replace(/_/,' · ').replace(/-/g,' '); }
     case 'courses': return (S.courses&&S.courses[s[1]]&&S.courses[s[1]].name) || s[1];
@@ -2817,6 +2880,7 @@ window.bootDB = (db, prof, fbUser) => {
     db.collection('approvals').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.rid||v._id); if(id) m[id]=v; }); S.approvals=m; render(); }, ()=>{});
     db.collection('guests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id){ m[v.id]=v; registerGuest(v); } }); S.guestBook=m; render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
     db.collection('photos').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id&&v.img) m[v._id]=v.img; }); S.photos=m; render(); }, ()=>{});
+    db.collection('treasury').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if (v&&v._id) m[v._id]=v; }); S.treas=m; if (route()==='expenses') render(); }, ()=>{});
     db.collection('dues').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if (v&&v._id) m[v._id]=v; }); S.duesPay=m; applyDues(); render(); }, ()=>{});
     db.collection('roster').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id) m[v.id]=v; }); S.roster=m; applyRoster(); render(); if ($('#sheet').classList.contains('open')) drawPick(); }, ()=>{});
     db.collection('sched').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date) m[v.date]=v; }); S.sched=m; applySched(); render(); }, ()=>{});
