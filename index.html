@@ -1058,6 +1058,14 @@ function contestsTable(d, pars){
   ${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<tr><td>${esc(sname(p))}</td><td class="num">${n}</td><td class="num">${money$(payR(n*M.value))}</td></tr>`).join('')}</tbody></table></div>`:''}
   <div class="small muted" style="margin-top:6px">${gamesFor(d).noQuota ? `${money$(gamesFor(d).ctpShare)} per player.` : `${money$(gamesFor(d).ctpShare)} of each ${money$(gamesFor(d).ctp)} goes here.`} The pot is split evenly among the par 3s that have a winner.</div></section>`;
 }
+/* Reminder on the Wednesday screens for players who are in a side round today (both can be played the same day) */
+function sideNudge(d){
+  const me=meId(); if (!me || d!==todayISO()) return '';
+  const mine=sideToday().filter(r=>{ sideSub(r.id); return !!(S.live['sr:'+r.id]||{})[me]; });
+  if (!mine.length) return '';
+  return `<div class="banner" style="margin:8px 0">${mine.map(r=>`You're in today's side round at <b>${esc(r.course||'another course')}</b>. <a href="#sround" data-sopen="${esc(r.id)}" data-sscore="1">Score the side round there →</a>`).join('<br>')}
+  <div class="small muted" style="margin-top:4px">This page is the Wednesday round. Only score here if you're playing it too.</div></div>`;
+}
 V.leaderboard = () => {
   const d = roundDate(), sch = schedFor(d), L = S.live[d] || {};
   ensureLive(d);
@@ -1073,6 +1081,7 @@ V.leaderboard = () => {
   return `${scModal()}<main>${back()}<div class="pagehead"><h1>Live Leaderboard</h1><span class="livepill">LIVE</span></div>
   <div class="muted">${fmt(d,{weekday:'long',month:'short',day:'numeric'})} · ${esc(C.name||sch?.course||'')} · Stableford points against quota</div>${dbNote()}
   ${T.confirmed!==true?`<div class="banner">Birdie is set to ${T.birdie} points until leadership confirms it. <a href="#points">Check points</a></div>`:''}
+  ${sideNudge(d)}
   <a class="btn" href="#score" style="justify-self:start">Score my group</a>
   <div class="seg" role="group" aria-label="Show"><button data-lbm="all" aria-pressed="${S.lbMode!=='match'}">Everyone</button><button data-lbm="match" aria-pressed="${S.lbMode==='match'}">My match${matchIds(d).length?` (${matchIds(d).length})`:''}</button></div>
   ${S.lbMode==='match' ? matchHTML(d, L, pars, rows) : ''}${S.lbMode==='match' ? '' : `<div class="tablewrap"><table class="compact lb"><thead><tr><th>#</th><th>Player</th><th class="num">Thru</th><th class="num" title="Gross score to par">Par</th><th class="num">Pts</th><th class="num">Q</th><th class="num">+/−</th></tr></thead><tbody>
@@ -1170,7 +1179,7 @@ V.score = () => {
   ensureLive(d);
   const inRound = new Set(d===S.ciDate ? [...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})] : []);
   const ids0 = myGroup(d), ids = ids0 ? ids0.filter(id=>inRound.has(id) && PBY[id]) : null;
-  const head = `<div class="cbar">${esc(C.name||sch?.course||'Course')}</div>`;
+  const head = `<div class="cbar">${esc(C.name||sch?.course||'Course')}</div>` + sideNudge(d);
   if (!ids || !ids.length || S.pickOpen){
     const sel = new Set((S.pick || ids || []).filter(id=>inRound.has(id)));
     const q = (S.pq||'').toLowerCase();
@@ -2608,7 +2617,7 @@ async function sideRemovePlayer(r, id){
 }
 document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-sopen],[data-snew],[data-sedit],#sMore,[data-stab],#sJoin,#sAdd,#sAddGuest,[data-srm],#snSave,#snDel,#sPickGo,#sPickCancel,#sPickOpen,[data-sinc],#sSave,#sClear,#sCtpAdd,[data-sctpdel],[data-sgoh],[data-sopenrow]'); if (!b) return;
-  if (b.dataset.sopen){ S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (S.sTab||'players') : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
+  if (b.dataset.sopen){ S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (b.dataset.sscore ? 'score' : (S.sTab||'players')) : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
   if (b.dataset.snew){ S.sEdit=null; return; }
   if (b.dataset.sedit){ S.sEdit=S.sideId; return; }
   if (b.id==='sMore'){ S.sideMore=true; render(); return; }
