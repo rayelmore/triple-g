@@ -2554,7 +2554,7 @@ function sideScoreHTML(r, k){
   if (isFinal) return valTop;
   return `${valTop}<div class="row" style="justify-content:center"><label for="ssh" style="font-weight:700">Score Hole</label><select id="ssh">${pars.map((p,i)=>`<option value="${i+1}"${i+1===hole?' selected':''}>${i+1} (Par-${p})${ids.every(id=>L[id]?.holes?.[i+1]!=null)?' ✓':''}</option>`).join('')}</select></div>
   <div class="steps">${ids.map((id,i)=>{ const v=dr.v[id], tot=cardTotals(L[id]?.holes, pars);
-    return `<div class="st ${i%2?'':'alt'}"><div><b>${esc(sname(id))}</b><div class="small muted">${tot.thru?`${tot.pts} pts thru ${tot.thru}`:'No holes yet'}${saved(id)?'':' · not saved'}${L[id]?.skins===false?' · no skins':''}${L[id]?.ctp===false?' · no CTP':''}</div></div>
+    return `<div class="st ${i%2?'':'alt'}"><div><b>${esc(sname(id))}</b><div class="small muted">${tot.thru?`${tot.toPar===0?'E':(tot.toPar>0?'+':'')+tot.toPar} thru ${tot.thru} · ${tot.gross} strokes`:'No holes yet'}${saved(id)?'':' · not saved'}${L[id]?.skins===false?' · no skins':''}${L[id]?.ctp===false?' · no CTP':''}</div></div>
     <div class="stepper"><button data-sinc="${id}" data-by="-1" aria-label="${esc(sname(id))} one less">−</button><output class="${scls(v-par)}" aria-live="polite" title="${LABEL(v-par)}">${v}</output><button data-sinc="${id}" data-by="1" aria-label="${esc(sname(id))} one more" ${v>=par+2?'disabled':''}>+</button></div></div>`; }).join('')}</div>
   <div class="small muted" style="text-align:center">Max score is double bogey (${par+2} on this hole).</div>
   ${blocked?'<div class="banner">Validate the front 9 above before scoring the back 9.</div>':''}
@@ -2572,12 +2572,12 @@ function sideScoreHTML(r, k){
 
 function sideBoardHTML(r, k){
   const pars=courseInfo(r.course).pars, L=S.live[k]||{};
-  const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.pts||0)-(a.pts||0));
+  const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || sname(a.pid).localeCompare(sname(b.pid)));
   let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
   const tp = n => n===0?'E':(n>0?'+'+n:''+n);
-  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Pts</th></tr></thead><tbody>
-  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td></tr>
-    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
+  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Strokes</th></tr></thead><tbody>
+  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.gross||''}</td></tr>
+    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>P${p}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
     :'<tr><td colspan="5" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
   <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Tap a player to see the card.</div>
   ${rows.length?skinsTable(k)+contestsTable(k, pars):''}`;
