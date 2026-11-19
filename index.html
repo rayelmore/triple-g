@@ -2525,6 +2525,8 @@ V.snew = () => {
   </div></section></main>`;
 };
 
+// Same 9 / 18 check as Wednesday, with its own buttons so it saves to this side round
+const sideValPanel = (k, ids, pars, n) => valPanel(k, ids, pars, n).replace(/data-goh=/g,'data-sgoh=').replace('id="v9"','id="sv9"').replace('id="v18"','id="sv18"').replace('id="valMsg"','id="sValMsg"');
 function sideScoreHTML(r, k){
   const L=S.live[k]||{}, C=courseInfo(r.course), pars=C.pars, inR=Object.keys(L);
   const ids0=myGroup(k), ids=ids0?ids0.filter(id=>L[id]):null;
@@ -2542,12 +2544,21 @@ function sideScoreHTML(r, k){
   const saved = id => L[id]?.holes?.[hole]!=null;
   const ctp = par===3 ? (ctpFor(k, pars).find(c=>c.h===hole)?.list || []) : [];
   const el = ids.filter(id=>L[id]?.ctp!==false && L[id]?.holes?.[hole]!=null && L[id].holes[hole]<=par);
-  return `<div class="row" style="justify-content:center"><label for="ssh" style="font-weight:700">Score Hole</label><select id="ssh">${pars.map((p,i)=>`<option value="${i+1}"${i+1===hole?' selected':''}>${i+1} (Par-${p})${ids.every(id=>L[id]?.holes?.[i+1]!=null)?' ✓':''}</option>`).join('')}</select></div>
+  const needFront = nineDone(L, ids, 'front') && ids.some(id=>!L[id]?.v9);
+  const needBack = !needFront && nineDone(L, ids, 'back') && ids.some(id=>!L[id]?.final);
+  const isFinal = ids.every(id=>L[id]?.final), blocked = needFront && hole>9;
+  const valTop = isFinal ? `<section class="card val done"><h2>Round saved ✓</h2><div class="small">All 18 holes were checked against the scorecard and saved${L[ids[0]]?.final?.by?` by ${esc(L[ids[0]].final.by)}`:''}.</div>
+     <div class="row" style="margin-top:10px"><button class="btn ghost" id="sReopen">Reopen to fix a score</button><button class="btn" data-stab="board">See leaderboard</button></div><div class="small" id="sValMsg" role="status"></div></section>`
+    : needFront ? sideValPanel(k, ids, pars, 'front') : needBack ? sideValPanel(k, ids, pars, 'back')
+    : (ids.every(id=>L[id]?.v9) && hole<=9 ? '<div class="banner good">Front 9 validated ✓ — changing a front-nine score will ask you to validate again.</div>' : '');
+  if (isFinal) return valTop;
+  return `${valTop}<div class="row" style="justify-content:center"><label for="ssh" style="font-weight:700">Score Hole</label><select id="ssh">${pars.map((p,i)=>`<option value="${i+1}"${i+1===hole?' selected':''}>${i+1} (Par-${p})${ids.every(id=>L[id]?.holes?.[i+1]!=null)?' ✓':''}</option>`).join('')}</select></div>
   <div class="steps">${ids.map((id,i)=>{ const v=dr.v[id], tot=cardTotals(L[id]?.holes, pars);
     return `<div class="st ${i%2?'':'alt'}"><div><b>${esc(sname(id))}</b><div class="small muted">${tot.thru?`${tot.pts} pts thru ${tot.thru}`:'No holes yet'}${saved(id)?'':' · not saved'}${L[id]?.skins===false?' · no skins':''}${L[id]?.ctp===false?' · no CTP':''}</div></div>
     <div class="stepper"><button data-sinc="${id}" data-by="-1" aria-label="${esc(sname(id))} one less">−</button><output class="${scls(v-par)}" aria-live="polite" title="${LABEL(v-par)}">${v}</output><button data-sinc="${id}" data-by="1" aria-label="${esc(sname(id))} one more" ${v>=par+2?'disabled':''}>+</button></div></div>`; }).join('')}</div>
   <div class="small muted" style="text-align:center">Max score is double bogey (${par+2} on this hole).</div>
-  <div class="row" style="justify-content:center"><button class="btn big" id="sSave" ${S.dbStatus==='ready'?'':'disabled'}>Save</button>${ids.some(saved)?`<button class="btn ghost" id="sClear">Clear hole ${hole}</button>`:''}</div>
+  ${blocked?'<div class="banner">Validate the front 9 above before scoring the back 9.</div>':''}
+  <div class="row" style="justify-content:center"><button class="btn big" id="sSave" ${S.dbStatus==='ready'&&!blocked?'':'disabled'}>Save</button>${ids.some(saved)?`<button class="btn ghost" id="sClear">Clear hole ${hole}</button>`:''}</div>
   <div class="small" id="sMsg" role="status" style="text-align:center"></div>
   ${par===3?`<section class="card" id="sCtpBox" style="border:2px solid var(--gold)"><h2>Closest to the Pin · Hole ${hole}</h2>
     ${ctp.length?`<div class="list">${ctp.map((e,i)=>`<div class="li" style="grid-template-columns:auto 1fr auto auto"><span class="medal">${i+1}</span><span class="name">${esc(sname(e.pid))}</span><b>${ftin(e)}</b><button class="xbtn" data-sctpdel="${e.hole}_${e.pid}" aria-label="Remove ${esc(sname(e.pid))}">×</button></div>`).join('')}</div>`:'<div class="muted small">No entries yet.</div>'}
@@ -2565,7 +2576,7 @@ function sideBoardHTML(r, k){
   let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
   const tp = n => n===0?'E':(n>0?'+'+n:''+n);
   return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Pts</th></tr></thead><tbody>
-  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.thru===18?'F':x.thru}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td></tr>
+  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.pts}</td></tr>
     ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>${g?holePts(g,p):''}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
     :'<tr><td colspan="5" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
   <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Tap a player to see the card.</div>
@@ -2604,10 +2615,16 @@ async function sideSaveHole(){
   const r=sideRound(sideKey()), k=sideKey(), pars=courseInfo(r.course).pars, L=S.live[k]||{}, hole=S.sHole||1, ids=(myGroup(k)||[]).filter(id=>L[id]);
   const msg=live$('sMsg'); msg.textContent='Saving…';
   try{ for (const id of ids){ const g=Math.min(S.sDraft.v[id], pars[hole-1]+2), holes={...(L[id].holes||{})}; if (holes[hole]===g) continue; holes[hole]=g; const t=cardTotals(holes,pars);
-      await S.db.doc(`side/${r.id}/players/${id}`).set({...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString(), by:S.meFull||''}); }
+      const doc={...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString(), by:S.meFull||''};
+      if (hole<=9) delete doc.v9; delete doc.v18; delete doc.final;   // a changed score needs checking again
+      await S.db.doc(`side/${r.id}/players/${id}`).set(doc); }
+    const L2=S.live[k]||{}, fDue = nineDone(L2, ids, 'front') && ids.some(id=>!L2[id]?.v9), bDue = !fDue && nineDone(L2, ids, 'back') && ids.some(id=>!L2[id]?.final);
     const ctpEl = pars[hole-1]===3 && ids.some(id=>L[id].ctp!==false && Math.min(S.sDraft.v[id], pars[hole-1]+2)<=pars[hole-1]);
-    if (hole<18 && !ctpEl){ S.sHole=hole+1; S.sDraft=null; }
-    render(); live$('sMsg').textContent = ctpEl ? `Hole ${hole} saved. Enter closest-to-the-pin distances below, then tap Next hole.` : `Hole ${hole} saved.`+(hole<18?` Now on hole ${S.sHole}.`:' Round complete.');
+    if (hole<18 && !ctpEl && !(hole===9 && fDue)){ S.sHole=hole+1; S.sDraft=null; }
+    render();
+    if (fDue && (hole===9 || hole<=9 && !ctpEl)){ live$('sMsg').textContent=''; scrollTo(0,0); live$('sValMsg').textContent='Front 9 complete. Check the scores against the scorecard.'; return; }
+    if (bDue && !ctpEl){ live$('sMsg').textContent=''; scrollTo(0,0); live$('sValMsg').textContent='All 18 holes in. Check the back 9, then save the round.'; return; }
+    live$('sMsg').textContent = ctpEl ? `Hole ${hole} saved. Enter closest-to-the-pin distances below, then tap Next hole.` : `Hole ${hole} saved.`+(hole<18?` Now on hole ${S.sHole}.`:'');
     if (ctpEl) document.getElementById('sCtpBox')?.scrollIntoView({block:'center'});
   }catch(err){ live$('sMsg').textContent=noWriteC; }
 }
@@ -2616,7 +2633,7 @@ async function sideRemovePlayer(r, id){
   await S.db.doc(`side/${r.id}/players/${id}`).delete();
 }
 document.addEventListener('click', async e=>{
-  const b=e.target.closest('[data-sopen],[data-snew],[data-sedit],#sMore,[data-stab],#sJoin,#sAdd,#sAddGuest,[data-srm],#snSave,#snDel,#sPickGo,#sPickCancel,#sPickOpen,[data-sinc],#sSave,#sClear,#sCtpAdd,[data-sctpdel],[data-sgoh],[data-sopenrow]'); if (!b) return;
+  const b=e.target.closest('[data-sopen],[data-snew],[data-sedit],#sMore,[data-stab],#sJoin,#sAdd,#sAddGuest,[data-srm],#snSave,#snDel,#sPickGo,#sPickCancel,#sPickOpen,[data-sinc],#sSave,#sClear,#sCtpAdd,[data-sctpdel],[data-sgoh],#sv9,#sv18,#sReopen,[data-sopenrow]'); if (!b) return;
   if (b.dataset.sopen){ S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (b.dataset.sscore ? 'score' : (S.sTab||'players')) : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
   if (b.dataset.snew){ S.sEdit=null; return; }
   if (b.dataset.sedit){ S.sEdit=S.sideId; return; }
@@ -2654,10 +2671,20 @@ document.addEventListener('click', async e=>{
   else if (b.id==='sPickOpen'){ S.sPick=[...(myGroup(k)||[])]; render(); scrollTo(0,0); }
   else if (b.dataset.sinc){ const id=b.dataset.sinc, pars=courseInfo(r.course).pars, mx=pars?pars[(S.sHole||1)-1]+2:15; S.sDraft.v[id]=Math.max(1,Math.min(mx,(+S.sDraft.v[id]||0)+(+b.dataset.by))); render(); }
   else if (b.id==='sSave'){ b.disabled=true; await sideSaveHole(); }
+  else if (b.id==='sv9' || b.id==='sv18' || b.id==='sReopen'){ const L=S.live[k]||{}, ids=(myGroup(k)||[]).filter(id=>L[id]), stamp={at:new Date().toISOString(), by:S.meFull||''};
+    if (b.id==='sReopen' && !await ask('Reopen this group’s card to fix a score? You’ll check the back 9 again afterward.')) return;
+    b.disabled=true;
+    try{ for (const id of ids){ const doc={...L[id]};
+        if (b.id==='sv9') doc.v9=stamp; else if (b.id==='sv18'){ doc.v18=stamp; doc.final=stamp; if (!doc.v9) doc.v9=stamp; } else { delete doc.v18; delete doc.final; }
+        await S.db.doc(`side/${r.id}/players/${id}`).set(doc); }
+      if (b.id==='sv9'){ S.sHole=10; S.sDraft=null; }
+      if (b.id==='sReopen'){ S.sHole=18; S.sDraft=null; }
+      render(); live$('sMsg').textContent = b.id==='sv9' ? 'Front 9 validated. On to hole 10.' : b.id==='sReopen' ? 'Round reopened.' : '';
+    }catch(err){ live$('sValMsg').textContent=noWriteC; b.disabled=false; } }
   else if (b.dataset.sgoh){ S.sHole=+b.dataset.sgoh; S.sDraft=null; render(); document.querySelector('.steps')?.scrollIntoView({block:'center'}); }
   else if (b.id==='sClear'){ const h=S.sHole||1, L=S.live[k]||{}, pars=courseInfo(r.course).pars, ids=(myGroup(k)||[]).filter(id=>L[id]?.holes?.[h]!=null);
     if (!await ask(`Clear hole ${h} for ${ids.map(sname).join(', ')}?`)) return;
-    try{ for (const id of ids){ const holes={...L[id].holes}; delete holes[h]; const t=cardTotals(holes,pars); await S.db.doc(`side/${r.id}/players/${id}`).set({...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString()}); }
+    try{ for (const id of ids){ const holes={...L[id].holes}; delete holes[h]; const t=cardTotals(holes,pars); const doc={...L[id], holes, pts:t.pts, thru:t.thru, gross:t.gross, toPar:t.toPar, at:new Date().toISOString()}; if (h<=9) delete doc.v9; delete doc.v18; delete doc.final; await S.db.doc(`side/${r.id}/players/${id}`).set(doc); }
       S.sDraft=null; render(); live$('sMsg').textContent=`Hole ${h} cleared.`; }catch(err){ live$('sMsg').textContent=noWriteC; } }
   else if (b.id==='sCtpAdd'){ const pid=$('#sCtpWho').value, ft=$('#sCtpFt').value, inch=$('#sCtpIn').value||'0', h=S.sHole||1;
     if (ft===''||!Number.isInteger(+ft)||+ft<0||+ft>200||!Number.isInteger(+inch)||+inch<0||+inch>11){ live$('sCtpMsg').textContent='Enter feet (0–200) and inches (0–11).'; return; }
