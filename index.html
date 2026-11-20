@@ -1095,10 +1095,13 @@ V.leaderboard = () => {
 };
 
 /* ---- My match: private head-to-head (front / back / overall), saved only on this phone for this round ---- */
-const MKEY = d => '3g-match-'+d;
-function matchIds(d){ try{ const v=JSON.parse(localStorage.getItem(MKEY(d))||'[]'); return Array.isArray(v)?v.filter(id=>PBY[id]):[]; }catch(e){ return S['mt'+d]||[]; } }
+const MKEY = d => '3g-match-'+d;   // d is the Wednesday date, or 'sr:<id>' for a side round
+const mKnown = id => !!(PBY[id] || SIDEN[id]);
+const mFull = id => PBY[id] ? shortName(PBY[id].name) : (SIDEN[id] ? sideFull(id) : '');
+const matchKey = () => route()==='sround' ? sideKey() : roundDate();
+function matchIds(d){ try{ const v=JSON.parse(localStorage.getItem(MKEY(d))||'[]'); return Array.isArray(v)?v.filter(mKnown):[]; }catch(e){ return (S['mt'+d]||[]).filter(mKnown); } }
 function saveMatch(d, ids){ S['mt'+d]=ids; try{ localStorage.setItem(MKEY(d), JSON.stringify(ids)); }catch(e){} }
-function matchPool(d, L){ const s=new Set(d===S.ciDate ? playingIds() : []); Object.keys(L||{}).forEach(id=>s.add(id)); return [...s].filter(id=>PBY[id]); }
+function matchPool(d, L){ const s=new Set(d===S.ciDate ? playingIds() : []); Object.keys(L||{}).forEach(id=>s.add(id)); return [...s].filter(mKnown); }
 function nineTot(holes, pars, hs){ let st=0, tp=0, n=0; hs.forEach(h=>{ const g=+(holes||{})[h]; if (g>0 && pars){ st+=g; tp+=g-pars[h-1]; n++; } }); return {st, tp, n}; }
 function matchHTML(d, L, pars, rows){
   const me=meId(), pool=matchPool(d, L);
@@ -1107,8 +1110,8 @@ function matchHTML(d, L, pars, rows){
     const sel=new Set(S.mPick || saved), others=[...sel].filter(id=>id!==me);
     const list=pool.filter(id=>id!==me).sort((a,b)=>sname(a).localeCompare(sname(b)));
     return `<section class="card"><h2 style="margin:0 0 4px">Set up your match</h2>
-    <div class="small muted">Pick up to 4 players you have a side bet with. ${me&&pool.includes(me)?'You are included automatically. ':''}Only you see this, on this phone, for today's round.</div>
-    <div class="pick2" style="margin-top:8px">${list.length ? list.map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-mpk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&others.length>=4?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(shortName(PBY[id].name))}</span></label>`).join('') : '<div class="muted small">Nobody is checked in or scoring yet.</div>'}</div>
+    <div class="small muted">Pick up to 4 players you have a side bet with. ${me&&pool.includes(me)?'You are included automatically. ':''}Only you see this, on this phone, for ${SIDE_KEY(d)?'this side round':"today's round"}.</div>
+    <div class="pick2" style="margin-top:8px">${list.length ? list.map(id=>`<label class="${sel.has(id)?'on':''}"><input type="checkbox" data-mpk="${id}" ${sel.has(id)?'checked':''} ${!sel.has(id)&&others.length>=4?'disabled':''}><span>${esc(sname(id))}</span><span class="muted small">${esc(mFull(id))}</span></label>`).join('') : `<div class="muted small">${SIDE_KEY(d)?'No other players in this round yet.':'Nobody is checked in or scoring yet.'}</div>`}</div>
     <div class="row" style="margin-top:10px"><button class="btn" id="mGo" ${others.length?'':'disabled'}>Show my match</button>${saved.length?'<button class="btn ghost" id="mCancel">Back</button><button class="btn ghost danger" id="mEnd">End match</button>':''}<span class="small" id="mMsg" role="status">${S.mEnded?'Match ended. Pick new players any time.':''}</span></div></section>`;
   }
   const ids=[...new Set([...(me&&pool.includes(me)?[me]:[]), ...saved])];
@@ -1126,18 +1129,18 @@ function matchHTML(d, L, pars, rows){
   <table class="mt" style="margin-top:6px"><thead><tr><th>Player</th><th>Front</th><th>Back</th><th>Overall</th></tr></thead><tbody>
   ${order.map(x=>`<tr><td>${esc(sname(x.id))}${x.id===me?' <span class="small muted">(you)</span>':''}</td>${cell(x,'f',LF)}${cell(x,'b',LB)}${cell(x,'t',LT)}</tr>`).join('')}</tbody></table>
   ${pars ? `<h3 style="margin:14px 0 0;font-size:15px">Front 9</h3>${grid(NINE.front)}<h3 style="margin:12px 0 0;font-size:15px">Back 9</h3>${grid(NINE.back)}<div class="small muted" style="margin-top:6px">Highlighted = lowest score on the hole.</div>` : '<div class="small muted">Hole-by-hole scores show once the course pars are set.</div>'}
-  <div class="small muted" style="margin-top:10px">Private to you. Clears after today's round.</div></section>`;
+  <div class="small muted" style="margin-top:10px">Private to you. ${SIDE_KEY(d)?'Only for this side round — your Wednesday match is separate.':"Clears after today's round."}</div></section>`;
 }
-document.addEventListener('click', e=>{ const b=e.target.closest('[data-lbm],#mGo,#mCancel,#mEdit,#mEnd,#mEndYes,#mEndNo'); if (!b) return; const d=roundDate();
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-lbm],#mGo,#mCancel,#mEdit,#mEnd,#mEndYes,#mEndNo'); if (!b) return; const d=matchKey();
   S.mEnded=false; if (b.id!=='mEnd') S.mConfirm=false;
-  if (b.dataset.lbm){ S.lbMode=b.dataset.lbm; S.mPickOpen=false; S.mPick=null; }
+  if (b.dataset.lbm){ if (route()==='sround') S.sLbMode=b.dataset.lbm; else S.lbMode=b.dataset.lbm; S.mPickOpen=false; S.mPick=null; }
   else if (b.id==='mEnd'){ S.mPickOpen=false; S.mPick=null; S.mConfirm=true; }
   else if (b.id==='mEndYes'){ saveMatch(d, []); try{ localStorage.removeItem(MKEY(d)); }catch(e){} S.mPickOpen=false; S.mPick=null; S.mEnded=true; }
   else if (b.id==='mGo'){ saveMatch(d, [...(S.mPick||matchIds(d))].filter(id=>id!==meId()).slice(0,4)); S.mPickOpen=false; S.mPick=null; }
   else if (b.id==='mCancel'){ S.mPickOpen=false; S.mPick=null; }
   else if (b.id==='mEdit'){ S.mPickOpen=true; S.mPick=matchIds(d); }
   render(); });
-document.addEventListener('change', e=>{ const t=e.target; if (!t.dataset || !t.dataset.mpk) return; const d=roundDate();
+document.addEventListener('change', e=>{ const t=e.target; if (!t.dataset || !t.dataset.mpk) return; const d=matchKey();
   const s=new Set(S.mPick||matchIds(d)); s.delete(meId()); if (t.checked){ if (s.size>=4){ t.checked=false; return; } s.add(t.dataset.mpk); } else s.delete(t.dataset.mpk);
   S.mPick=[...s]; render(); });
 
@@ -2575,7 +2578,9 @@ function sideBoardHTML(r, k){
   const rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || sname(a.pid).localeCompare(sname(b.pid)));
   let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
   const tp = n => n===0?'E':(n>0?'+'+n:''+n);
-  return `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Strokes</th></tr></thead><tbody>
+  const nM=matchIds(k).length, seg=`<div class="seg" role="group" aria-label="Show" style="margin-bottom:10px"><button data-lbm="all" aria-pressed="${S.sLbMode!=='match'}">Everyone</button><button data-lbm="match" aria-pressed="${S.sLbMode==='match'}">My match${nM?` (${nM})`:''}</button></div>`;
+  if (S.sLbMode==='match') return seg + matchHTML(k, L, pars, rows);
+  return `${seg}<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Strokes</th></tr></thead><tbody>
   ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.gross||''}</td></tr>
     ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>P${p}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
     :'<tr><td colspan="5" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
@@ -2634,7 +2639,7 @@ async function sideRemovePlayer(r, id){
 }
 document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-sopen],[data-snew],[data-sedit],#sMore,[data-stab],#sJoin,#sAdd,#sAddGuest,[data-srm],#snSave,#snDel,#sPickGo,#sPickCancel,#sPickOpen,[data-sinc],#sSave,#sClear,#sCtpAdd,[data-sctpdel],[data-sgoh],#sv9,#sv18,#sReopen,[data-sopenrow]'); if (!b) return;
-  if (b.dataset.sopen){ S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (b.dataset.sscore ? 'score' : (S.sTab||'players')) : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
+  if (b.dataset.sopen){ if (S.sideId!==b.dataset.sopen){ S.sLbMode='all'; S.mPickOpen=false; S.mPick=null; } S.sideId=b.dataset.sopen; S.sTab = sideRound('sr:'+S.sideId)?.date===todayISO() ? (b.dataset.sscore ? 'score' : (S.sTab||'players')) : 'board'; S.sHole=1; S.sDraft=null; S.sPick=null; S.sOpenRow=null; return; }
   if (b.dataset.snew){ S.sEdit=null; return; }
   if (b.dataset.sedit){ S.sEdit=S.sideId; return; }
   if (b.id==='sMore'){ S.sideMore=true; render(); return; }
