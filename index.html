@@ -956,7 +956,7 @@ function inGameOn(d, pid, g){
   if (d===S.ciDate) return inGame(pid, g);
   if (!signupsKnown(d)) return true;            // no sign-up records for that round: count everyone who played
   const c=S.pastCi[d], v=c.players[pid] || c.guests[pid];
-  return v ? v.status!=='out' && v[g]!==false : true;   // no record = Wednesday regular, in both games by default
+  return v ? v.status!=='out' && v[g]!==false : autoRound(d);   // no record = Wednesday regular (unless auto list was off), in both games by default
 }
 function skinsFor(d){
   const pars = courseInfo(schedFor(d)?.course).pars;
@@ -1699,8 +1699,9 @@ const teeBoxTxt = r => r && r.teeBox ? ` · ${esc(r.teeBox)}` : '';
 const isCancelled = r => r.cancelled || /cancel/i.test(r.notes||'');
 function applySched(){
   const m = new Map(BASE_SCHED.map(r=>[r.date, {...r}]));
-  Object.values(S.sched||{}).forEach(o=>{ if (!o || !o.date) return; if (o.deleted) m.delete(o.date); else m.set(o.date, {date:o.date, course:o.course, time:o.time, teeTimes:o.teeTimes, teeBox:('teeBox' in o ? o.teeBox : m.get(o.date)?.teeBox)||'', notes:o.notes||'', cancelled:!!o.cancelled}); });
+  Object.values(S.sched||{}).forEach(o=>{ if (!o || !o.date) return; if (o.deleted) m.delete(o.date); else m.set(o.date, {date:o.date, course:o.course, time:o.time, teeTimes:o.teeTimes, teeBox:('teeBox' in o ? o.teeBox : m.get(o.date)?.teeBox)||'', notes:o.notes||'', cancelled:!!o.cancelled, noAuto:!!o.noAuto}); });
   SEED.schedule = [...m.values()].sort((a,b)=>a.date.localeCompare(b.date));
+  if (S.ciDate) computeCheckins();
   const nr = nextRound(), want = nr ? nr.date : todayISO();
   if (S.db && want !== S.ciDate) subRound(want);
 }
@@ -1755,6 +1756,7 @@ V.admsched = () => {
       <div class="row" style="flex-wrap:nowrap"><label style="flex:1">Tee times booked<input type="number" id="asTee" min="1" max="20" value="${r?.teeTimes??''}" inputmode="numeric"></label></div>
       <label>Tee box <span class="muted">(leave blank unless the course moves tees)</span><input type="text" id="asBox" value="${esc(r?.teeBox||'')}" placeholder="e.g. Whites, Green par 5s" autocomplete="off"></label>
       <label>Notes (booking contact, rate…)<input type="text" id="asNotes" value="${esc((r?.notes||'').replace(/^Cancelled( – )?/i,''))}" autocomplete="off"></label>
+      <label class="chk"><input type="checkbox" id="asNoAuto" ${r?.noAuto?'checked':''}> No auto list — regulars must check in themselves this round</label>
       ${r?`<label class="chk"><input type="checkbox" id="asCancel" ${isCancelled(r)?'checked':''}> Cancelled (rainout, course closed…)</label>`:''}
       <div class="row"><button class="btn" id="asSave" data-date="${date}" ${S.dbStatus==='ready'?'':'disabled'}>${r?'Save changes':'Add round'}</button><button class="btn ghost" id="asCancelEd">Cancel</button>${r?`<button class="btn ghost danger" id="asDel" data-date="${date}">Delete</button>`:''}<span class="small" id="asMsg" role="status"></span></div>
     </div></div>`; };
@@ -1763,7 +1765,7 @@ V.admsched = () => {
   <div class="seg" role="group" aria-label="Show"><button data-aspast="0" aria-pressed="${!past}">Upcoming</button><button data-aspast="1" aria-pressed="${past}">Past</button></div>
   <section class="card" style="padding:4px 16px"><div class="list">
   ${(past?[...rows].reverse():rows).map(r=>`<div><div class="li" style="grid-template-columns:auto 1fr auto"><div class="datebox sm"><b>${fmt(r.date,{day:'numeric'})}</b><span>${fmt(r.date,{month:'short'})}</span></div>
-    <div><div class="name">${esc(r.course)}${isCancelled(r)?' <span class="pill bad">Cancelled</span>':''}</div><div class="small muted">${fmt(r.date,{weekday:'short'})} · ${fmtTee(r.time)}${r.teeTimes?` · ${r.teeTimes} tee times`:''}${teeBoxTxt(r)}${r.notes&&!isCancelled(r)?` · ${esc(r.notes)}`:''}</div></div>
+    <div><div class="name">${esc(r.course)}${isCancelled(r)?' <span class="pill bad">Cancelled</span>':''}${r.noAuto?' <span class="pill warn">No auto list</span>':''}</div><div class="small muted">${fmt(r.date,{weekday:'short'})} · ${fmtTee(r.time)}${r.teeTimes?` · ${r.teeTimes} tee times`:''}${teeBoxTxt(r)}${r.notes&&!isCancelled(r)?` · ${esc(r.notes)}`:''}</div></div>
     <button class="btn ghost" data-asedit="${r.date}" style="padding:6px 12px">Edit</button></div>${ed===r.date?form(r.date):''}</div>`).join('') || '<div class="li"><span class="muted">No rounds.</span></div>'}
   </div></section></main>`;
 };
@@ -1793,7 +1795,7 @@ document.addEventListener('click', async e=>{
   else if (b.dataset.asedit){ S.asEdit = S.asEdit===b.dataset.asedit ? null : b.dataset.asedit; render(); }
   else if (b.dataset.aspast){ S.asPast = b.dataset.aspast==='1'; render(); }
   else if (b.id==='asSave'){
-    const date=$('#asDate').value, time=$('#asTime').value, course=($('#asCourse').value||'').trim(), tee=$('#asTee').value, teeBox=($('#asBox')?.value||'').trim(), notes=($('#asNotes').value||'').trim(), canc=$('#asCancel')?.checked||false;
+    const date=$('#asDate').value, time=$('#asTime').value, course=($('#asCourse').value||'').trim(), tee=$('#asTee').value, teeBox=($('#asBox')?.value||'').trim(), notes=($('#asNotes').value||'').trim(), canc=$('#asCancel')?.checked||false, noAuto=$('#asNoAuto')?.checked||false;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)){ live$('asMsg').textContent='Pick a date.'; return; }
     if (!course){ live$('asMsg').textContent='Enter the course.'; return; }
     if (tee!=='' && (!Number.isInteger(+tee) || +tee<1 || +tee>20)){ live$('asMsg').textContent='Tee times must be 1–20.'; return; }
@@ -1801,7 +1803,7 @@ document.addEventListener('click', async e=>{
     if ((isNew || date!==old) && SEED.schedule.some(r=>r.date===date)){ live$('asMsg').textContent=`There's already a round on ${fmt(date)}. Edit that one instead.`; return; }
     b.disabled=true; live$('asMsg').textContent='Saving…';
     try{
-      await S.db.doc('sched/'+date).set({date, course, time:toHrs(time), teeTimes: tee===''?null:+tee, teeBox, notes: canc ? ('Cancelled' + (notes?` – ${notes}`:'')) : notes, cancelled:canc, by:S.meFull||'', at:new Date().toISOString()});
+      await S.db.doc('sched/'+date).set({date, course, time:toHrs(time), teeTimes: tee===''?null:+tee, teeBox, notes: canc ? ('Cancelled' + (notes?` – ${notes}`:'')) : notes, cancelled:canc, noAuto, by:S.meFull||'', at:new Date().toISOString()});
       if (!isNew && date!==old) await S.db.doc('sched/'+old).set({date:old, deleted:true, by:S.meFull||'', at:new Date().toISOString()});
       S.asEdit=null; render();
     }catch(err){ live$('asMsg').textContent=noWrite; b.disabled=false; }
@@ -2392,7 +2394,7 @@ document.addEventListener('change', async e=>{ const t=e.target; if (!t.dataset 
 const CH_OWNERS = ['ray.elmore@powerflightgolf.com','ray.elmore@gmail.com'];   // must match firestore.rules
 const isOwner = () => isAdmin() && CH_OWNERS.includes((S.email||'').toLowerCase());
 const CH_AREA = { treasury:'Treasury', gcpay:'Game day payments', dues:'Dues', live:'Live scores', ctp:'Closest to the pin', courses:'Course pars', settings:'Settings', pairings:'Pairings', approvals:'Expense approvals', requests:'Expense requests', rounds:'Finalized rounds', roster:'Members', sched:'Schedule', users:'Logins & roles', checkins:'Check-ins', guests:'Guests', side:'Ad hoc rounds', photos:'Photos', ethics:'Code of Ethics' };
-const CH_FIELD = { reason:'Reason', date:'Date', paid:'Paid', amt:'Amount', kind:'Game', amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
+const CH_FIELD = { noAuto:'No auto list', reason:'Reason', date:'Date', paid:'Paid', amt:'Amount', kind:'Game', amount:'Amount', method:'How paid', paidOn:'Date paid', year:'Year', pid:'Player', hole:'Hole', status:'Status', skins:'Skins', ctp:'Closest to pin', course:'Course', time:'Time', teeTimes:'Tee times', teeBox:'Tee box', notes:'Notes', cancelled:'Cancelled', deleted:'Deleted', role:'Role', first:'First name', last:'Last name', nick:'Nickname', email:'Email', phone:'Phone', member:'Member', auto:'Auto-included', inactive:'Inactive', groups:'Groups', ft:'Feet', inch:'Inches', pts:'Points', gross:'Gross', toPar:'To par', thru:'Thru', amount:'Amount', what:'What', who:'Who', body:'Letter text', img:'Photo', scores:'Scores', finalized:'Finalized' };
 const CH_VERB = { add:'Added', edit:'Changed', delete:'Removed', save:'Saved' };
 const chArea = p => CH_AREA[String(p).split('/')[0]] || String(p).split('/')[0];
 const chWho = e => (S.users && S.users[e.uid] && S.users[e.uid].name) || e.name || e.email || 'Unknown';
@@ -2764,19 +2766,22 @@ function ask(msg){ return new Promise(res=>{
 function computeCheckins(){
   const raw = S.ciRaw || {}, eff = {}, out = {};
   Object.values(raw).forEach(v=>{ if (!v || !v.pid) return; if (v.status==='out') out[v.pid]=v; else eff[v.pid]=v; });
-  SEED.players.forEach(p=>{ if (p.auto && !p.inactive && !p.guest && !raw[p.id]) eff[p.id] = {pid:p.id, auto:true, skins:true, ctp:true}; });
+  if (autoRound()) SEED.players.forEach(p=>{ if (p.auto && !p.inactive && !p.guest && !raw[p.id]) eff[p.id] = {pid:p.id, auto:true, skins:true, ctp:true}; });
   S.checkins = eff; S.ciOut = out;
 }
 // In/out deadline: Sunday 12:00 PM before the round (3G rule)
 function deadlineFor(date){ const d=D(date); const back=(d.getDay()+7)%7 || 7; d.setDate(d.getDate()-back); d.setHours(12,0,0,0); return d; }
 const pastDeadline = () => S.ciDate && new Date() > deadlineFor(S.ciDate);
-function deadlineLine(){ if (!S.ciDate) return ''; const dl=deadlineFor(S.ciDate), ms=dl-new Date();
+function deadlineLine(){ if (!S.ciDate) return ''; const na = autoRound() ? '' : `<div class="dl late"><b>Everyone must check in for this round.</b> Regulars are not automatically included this week.</div>`; return na + deadlineCore(); }
+function deadlineCore(){ const dl=deadlineFor(S.ciDate), ms=dl-new Date();
   const when = dl.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' at 12:00 PM';
   if (ms<=0) return `<div class="dl late">In/out deadline passed (${when}). Changes now are marked <b>late</b>.</div>`;
   const h=Math.floor(ms/3600000), m=Math.floor(ms%3600000/60000), left = h>=48 ? `${Math.floor(h/24)} days` : h>=1 ? `${h} hr ${m} min` : `${m} min`;
   return `<div class="dl">In/out deadline: <b>${when}</b> · ${left} left</div>`; }
 const isAdmin = () => S.role==='admin';
-const isRegular = id => !!(PBY[id] && PBY[id].auto && !PBY[id].inactive);
+// Leaders can turn off the auto list for a round (schedule → "No auto list"): then everyone must check in
+function autoRound(d){ const r = schedFor(d || S.ciDate); return !(r && r.noAuto); }
+const isRegular = id => autoRound() && !!(PBY[id] && PBY[id].auto && !PBY[id].inactive);
 /* ---------- check-in (self, guests, everyone) ---------- */
 // Side games chosen at check-in. Older check-ins without a choice count as playing both.
 function inGame(pid, g){ const c = (S.checkins||{})[pid] || (S.guestsIn||{})[pid]; if (!c) return false; return c[g] !== false; }
