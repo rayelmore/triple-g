@@ -1579,6 +1579,7 @@ V.more = () => `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Tools
     ${ltRow('#finalize','check','Finalize Game Day','Lock scores &amp; update quotas',true)}
     ${ltRow('#backup','shield','Season Backup','Download a season to Excel')}
     ${isOwner() ? ltRow('#changelog','edit','Change History','Who changed what · only you see this') : ''}
+    ${isOwner() ? ltRow('#activity','people','App Activity','Who has opened the app · only you see this') : ''}
   </div></section>`}
   <section class="card"><h2>Group Info</h2><div class="tiles">
     ${tile('#schedule','cal','Schedule','Courses & tee times')}
@@ -1869,7 +1870,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['gamecoord','changelog','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['gamecoord','changelog','activity','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -2462,6 +2463,49 @@ document.addEventListener('change', e=>{ const t=e.target; if (!S.ch) return;
 document.addEventListener('click', e=>{ const b=e.target.closest('#chMore,#chRefresh'); if (!b || !S.ch) return;
   if (b.id==='chMore') chLoad(true); else { S.ch.rows=null; S.ch.err=''; render(); } });
 
+/* ---------- App Activity (organizer only): who has actually opened the app ---------- */
+function actAgo(iso){
+  const t=new Date(iso), now=new Date(), d0=new Date(now.getFullYear(),now.getMonth(),now.getDate()), dt=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  const days=Math.round((d0-dt)/864e5), tm=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  return days<=0 ? 'Today '+tm : days===1 ? 'Yesterday '+tm : days<7 ? t.toLocaleDateString('en-US',{weekday:'long'})+' '+tm : t.toLocaleDateString('en-US',{month:'short',day:'numeric'})+(t.getFullYear()!==now.getFullYear()?', '+t.getFullYear():'');
+}
+async function actLoad(){
+  const st=S.act; if (!st || st.busy || !S.db || !S.db.seen) return; st.busy=true;
+  try{ const m={}; (await S.db.seen()).forEach(v=>{ if (v&&v.pid) { if (!m[v.pid] || String(v.at)>String(m[v.pid].at)) m[v.pid]=v; } }); st.seen=m; st.err=''; }
+  catch(err){ st.err = /permission/i.test(String(err&&(err.code||err.message))) ? 'perm' : 'net'; if (!st.seen) st.seen={}; }
+  st.busy=false; if (route()==='activity') render();
+}
+V.activity = () => {
+  if (!isOwner()) return `<main>${back()}<div class="pagehead"><h1>App Activity</h1></div><div class="card">Only the group organizer can open this page.</div></main>`;
+  const st = S.act || (S.act = { seen:null, f:'all', busy:false, err:'' });
+  if (!st.seen && !st.busy && S.dbStatus==='ready') setTimeout(actLoad, 0);
+  const seen = st.seen||{}, wk = Date.now()-7*864e5, two = Date.now()-14*864e5;
+  const rows = biPool().map(p => { const u=userFor(p.id), v=seen[p.id], t=v ? +new Date(v.at) : 0;
+    const k = !u ? 'nologin' : u.role==='disabled' ? 'disabled' : !v ? 'never' : t>=wk ? 'week' : t>=two ? 'recent' : 'stale';
+    return { p, u, v, t, k }; });
+  const ORDER = { never:0, stale:1, nologin:2, recent:3, week:4, disabled:5 };
+  rows.sort((a,b)=> ORDER[a.k]-ORDER[b.k] || (a.t-b.t) || sname(a.p.id).localeCompare(sname(b.p.id)));
+  const F = { all:['Everyone',()=>true], quiet:['Not in 2+ weeks',r=>r.k==='stale'], never:['Never opened',r=>r.k==='never'], nologin:['No login',r=>r.k==='nologin'] };
+  const shown = rows.filter(F[st.f]?.[1] || F.all[1]);
+  const opened = rows.filter(r=>r.v).length, week = rows.filter(r=>r.k==='week').length;
+  const PILL = { week:['good','This week'], recent:['good','Last week'], stale:['warn','2+ weeks'], never:['warn','Never opened'], nologin:['bad','No login'], disabled:['neutral','Disabled'] };
+  const list = shown.map(r => { const [pc,pl]=PILL[r.k];
+    const how = r.v ? [actAgo(r.v.at), r.v.device, r.v.how, r.v.visits ? `${r.v.visits} visit${r.v.visits===1?'':'s'}` : ''].filter(Boolean).map(esc).join(' · ')
+      : r.k==='nologin' ? 'No app login yet. Add one in Admin → Members.' : r.k==='disabled' ? 'Login is disabled.' : `Has a login (${esc(r.u.email||'')}) but hasn’t opened the app yet.`;
+    return `<div class="li" style="grid-template-columns:auto 1fr auto;align-items:center"><span class="av sm">${avFace(r.p.id, sname(r.p.id))}</span>
+      <div><div class="name">${esc(sname(r.p.id))}</div><div class="small muted">${how}</div></div><span class="pill ${pc}">${pl}</span></div>`; }).join('');
+  return `<main>${back()}<div class="pagehead"><h1>App Activity</h1><button class="btn ghost" id="actRefresh" style="padding:6px 12px" ${st.busy?'disabled':''}>Refresh</button></div>${dbNote()}
+  <div class="muted">When each member last opened the app, and on what. Use it to see who still needs help getting in. Only you can see this page. Tracking started with this update, so anyone who hasn’t opened the app since then shows as “Never opened”.</div>
+  ${st.err==='perm' ? `<div class="banner">The database isn’t letting this page read activity yet. Add the App Activity rule in Firebase → Firestore → Rules, publish, then tap Refresh.</div>` : st.err==='net' ? `<div class="banner">Couldn’t load activity. Check your connection and tap Refresh.</div>` : ''}
+  <section class="card">
+    <div class="small" style="margin-bottom:8px"><b>${opened}</b> of ${rows.length} members have opened the app · <b>${week}</b> this week</div>
+    <div class="seg" role="group" aria-label="Show">${Object.entries(F).map(([k,[l,fn]])=>`<button data-actf="${k}" aria-pressed="${st.f===k}">${l} (${rows.filter(fn).length})</button>`).join('')}</div>
+    <div class="list">${st.busy && !st.seen ? '<div class="small muted" style="padding:12px 0">Loading…</div>' : list || '<div class="small muted" style="padding:12px 0">Nobody in this list.</div>'}</div>
+  </section></main>`;
+};
+document.addEventListener('click', e=>{ const b=e.target.closest('[data-actf],#actRefresh'); if (!b || !S.act) return;
+  if (b.id==='actRefresh'){ S.act.seen=null; S.act.err=''; render(); } else { S.act.f=b.dataset.actf; render(); } });
+
 V.backup = () => {
   const ys=backupSeasons(), cur=new Date().getFullYear(), last=(S.backups&&S.backups.seasons)||{};
   return `<main>${back()}<div class="pagehead"><h1>Season Backup</h1></div>${dbNote()}
@@ -2985,7 +3029,7 @@ window.bootDB = (db, prof, fbUser) => {
 <script type="module">
 /* ---------- Firebase: data + logins ---------- */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, getDocFromCache, addDoc, query, orderBy, where, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, getDocFromCache, addDoc, query, orderBy, where, limit, increment } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, createUserWithEmailAndPassword, sendEmailVerification } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const firebaseConfig = {
@@ -3018,8 +3062,25 @@ const db = {
   }),
   // Change History page (organizer only; the database rules block everyone else)
   recent: (n, beforeAt) => getDocs(query(collection(fs, 'auditlog'), orderBy('at', 'desc'), ...(beforeAt ? [where('at', '<', beforeAt)] : []), limit(n)))
-    .then(s => s.docs.map(d => ({ _id: d.id, ...d.data() })))
+    .then(s => s.docs.map(d => ({ _id: d.id, ...d.data() }))),
+  // App Activity page (organizer only; the database rules block everyone else)
+  seen: () => getDocs(collection(fs, 'seen')).then(s => s.docs.map(d => ({ _id: d.id, ...d.data() })))
 };
+
+/* ---------- App Activity: note when each member opens the app ----------
+   One tiny write per visit (at most every 30 minutes), never waited on. */
+let SEEN = null;
+function markSeen(){
+  if (!SEEN || document.visibilityState==='hidden') return;
+  const k='tg_seen_'+SEEN.uid; let last=0; try{ last=+localStorage.getItem(k)||0; }catch(e){}
+  if (Date.now()-last < 30*60*1000) return;
+  try{ localStorage.setItem(k, String(Date.now())); }catch(e){}
+  const ua=navigator.userAgent||'';
+  const device = /iPhone|iPod/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints>1) ? 'iPad' : /Android/.test(ua) ? 'Android' : 'Computer';
+  const how = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone ? 'home screen app' : 'browser';
+  setDoc(doc(fs,'seen/'+SEEN.uid), { uid:SEEN.uid, pid:SEEN.pid, email:SEEN.email, name:SEEN.name, at:new Date().toISOString(), device, how, visits:increment(1) }, { merge:true }).catch(()=>{});
+}
+document.addEventListener('visibilitychange', markSeen);
 
 /* ---------- Change History: every save a leader makes is logged (who, when, what changed) ----------
    Runs after the save finishes and is never waited on, so the app is no slower.
@@ -3112,6 +3173,7 @@ async function start(user){
   hideGate();
   AUDIT = prof.role==='admin' ? { uid:user.uid, email, name:prof.name||'' } : null;
   window.TG_FB = { auth, auth2, fs, doc, setDoc, createUserWithEmailAndPassword, sendPasswordResetEmail: sendReset, signOut, uid:user.uid, email };
+  SEEN = { uid:user.uid, pid:prof.pid||'', email, name:prof.name||'' }; markSeen();
   if (!booted){ booted=true; window.bootDB(db, prof, user); } else location.reload();
 }
 onAuthStateChanged(auth, user => { if (booted && !user){ location.reload(); return; } start(user); });
