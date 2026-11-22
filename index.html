@@ -2305,21 +2305,21 @@ async function buildSeason(Y, onStep){
 /* ---------- Player scorecard pop-up (Live Leaderboard and Results) ---------- */
 function scModal(){
   const o = S.scOpen; if (!o) return '';
-  const d = o.d, pid = o.pid, sch = schedFor(d) || (allRounds().find(r=>r.date===d)||{});
+  const d = o.d, pid = o.pid, side = SIDE_KEY(d), sch = side ? (sideRound(d)||{}) : (schedFor(d) || (allRounds().find(r=>r.date===d)||{}));
   ensureLive(d);
   const pars = courseInfo(sch.course).pars, x = (S.live[d]||{})[pid], has = !!(x && x.holes && Object.keys(x.holes).length && pars);
   const t = has ? cardTotals(x.holes, pars) : null;
   const p = PBY[pid], sheet = p ? scoresFor(p)[d] : undefined;
   const pts = t ? t.pts : (typeof sheet==='number' ? sheet : null);
   const q = quotaOn(pid, d), plus = pts!==null && q!==null ? pts-q : null;
-  const P = S.pairings && S.pairings[d]; let grp = '—'; if (P && P.groups) P.groups.forEach((g,i)=>{ if (g.includes(pid)) grp = i+1; });
+  const P = !side && S.pairings && S.pairings[d]; let grp = '—'; if (P && P.groups) P.groups.forEach((g,i)=>{ if (g.includes(pid)) grp = i+1; });
   const tile = (l,v,style='') => `<div><span>${l}</span><b style="${style}">${v}</b></div>`;
   const nine = (a,b) => { let g=0,pt=0,n=0,pr=0; for (let h=a; h<=b; h++){ pr+=pars[h-1]; const v=+x.holes[h]; if (v>0){ g+=v; pt+=holePts(v,pars[h-1]); n++; } } return {g,pt,n,pr}; };
   const holeCell = i => { const par=pars[i], g=+x.holes[i+1]; return `<div>H${i+1} · P${par}<b class="${g?scls(g-par):''}">${g||'·'}</b><em>${g?(()=>{ const n=holePts(g,par); return n+(n===1?' pt':' pts'); })():''}</em></div>`; };
   const sumCell = (lbl,s) => `<div class="sum">${lbl} · P${s.pr}<b>${s.n?s.g:'·'}</b><em>${s.n?s.pt+' pts':''}</em></div>`;
   const F = has ? nine(1,9) : null, B = has ? nine(10,18) : null;
   return `<div class="scm" id="scm" role="dialog" aria-modal="true" aria-label="${esc(sname(pid))} scorecard"><div class="box">
-    <div class="hd"><div><b>${esc(p ? shortName(p.name) : sname(pid))}</b><small>${fmt(d,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}${sch.course?' · '+esc(courseInfo(sch.course).name||sch.course):''}</small></div><button class="x" id="scmX" aria-label="Close">✕</button></div>
+    <div class="hd"><div><b>${esc(p ? shortName(p.name) : sname(pid))}${side && x && x.guest ? ' <span class="small muted">guest</span>' : ''}</b><small>${side?'Side round · ':''}${fmt(side?sch.date:d,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}${sch.course?' · '+esc(courseInfo(sch.course).name||sch.course):''}</small></div><button class="x" id="scmX" aria-label="Close">✕</button></div>
     <div class="tl">${tile('Points', pts??'—')}${tile('Strokes', t&&t.gross ? t.gross : '—')}${tile('Holes', t ? t.thru : '—')}
       ${tile('Quota', q??'—')}${tile('+/− Quota', plus===null?'—':(plus>0?'+':'')+plus, plus===null?'':`color:${plus<0?'#c62828':'var(--green-2)'}`)}${tile('Group', grp)}</div>
     ${has ? `<div class="small" style="padding:8px 16px 4px;font-weight:800;color:var(--muted)">HOLE BY HOLE</div>
@@ -2330,7 +2330,7 @@ function scModal(){
     <div style="height:14px"></div></div></div>`;
 }
 document.addEventListener('click', e=>{
-  const r = e.target.closest('[data-sco]'); if (r){ S.scOpen = {d: S.resDate || allRounds()[allRounds().length-1].date, pid:r.dataset.sco}; render(); return; }
+  const r = e.target.closest('[data-sco]'); if (r){ S.scOpen = {d: r.dataset.scod || S.resDate || allRounds()[allRounds().length-1].date, pid:r.dataset.sco}; render(); return; }
   if (S.scOpen && (e.target.id==='scm' || e.target.closest('#scmX'))){ S.scOpen=null; render(); }
 });
 document.addEventListener('keydown', e=>{ if (S.scOpen && e.key==='Escape'){ S.scOpen=null; render(); }
@@ -2728,8 +2728,8 @@ function sideBoardHTML(r, k){
   const nM=matchIds(k).length, seg=`<div class="seg" role="group" aria-label="Show" style="margin-bottom:10px"><button data-lbm="all" aria-pressed="${S.sLbMode!=='match'}">Everyone</button><button data-lbm="match" aria-pressed="${S.sLbMode==='match'}">My match${nM?` (${nM})`:''}</button></div>`;
   if (S.sLbMode==='match') return seg + matchHTML(k, L, pars, rows);
   return `${seg}<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Strokes</th></tr></thead><tbody>
-  ${rows.length?rows.map(x=>`<tr data-sopenrow="${x.pid}" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.gross||''}</td></tr>
-    ${S.sOpenRow===x.pid && pars?`<tr><td colspan="5" style="white-space:normal;background:var(--gold-soft)"><div class="sc">${pars.map((p,i)=>{ const g=L[x.pid].holes[i+1]; return `<span><i>${i+1}</i><b class="${g?scls(g-p):''}">${g||'·'}</b><em>P${p}</em></span>`; }).join('')}</div></td></tr>`:''}`).join('')
+  ${rows.length?rows.map(x=>`<tr data-sco="${esc(x.pid)}" data-scod="${esc(k)}" role="button" tabindex="0" style="cursor:pointer"><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin" title="Validated and saved">F✓</b>':x.thru===18?'F':x.thru}${!x.final&&x.v9?'<small class="v9">F9✓</small>':''}</td><td class="num">${tp(x.toPar)}</td><td class="num">${x.gross||''}</td></tr>
+    `).join('')
     :'<tr><td colspan="5" class="muted">No scores yet.</td></tr>'}</tbody></table></div>
   <div class="small muted" style="margin:6px 0 12px">Ordered by score to par. Tap a player to see the card.</div>
   ${rows.length?skinsTable(k)+contestsTable(k, pars):''}`;
@@ -2756,7 +2756,7 @@ V.sround = () => {
   } else if (tab==='score') body = sideScoreHTML(r, k);
   else if (tab==='board') body = sideBoardHTML(r, k);
   else body = payoutsHTML(k, sidePayRows(k));
-  return `<main><a href="#side" class="small">← Side Rounds</a>
+  return `${scModal()}<main><a href="#side" class="small">← Side Rounds</a>
   <div class="pagehead"><h1 style="font-size:24px">${esc(r.course||'Side round')}</h1>${sideCan(r)?'<a class="btn ghost" href="#snew" data-sedit="1" style="padding:6px 12px">Settings</a>':''}</div>
   <div class="muted">${sideWhen(r)}${r.teeBox?' · '+esc(r.teeBox)+' tees':''} · side round (doesn't count toward Wednesday)</div>${dbNote()}
   <div class="seg" style="margin:12px 0">${tabs.map(([t,lbl])=>`<button data-stab="${t}" aria-pressed="${t===tab}">${lbl}</button>`).join('')}</div>
