@@ -249,10 +249,15 @@ main>*{min-width:0}
 .scm .tl div{background:var(--bg);border-radius:12px;padding:8px 4px;text-align:center}
 .scm .tl span{display:block;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .scm .tl b{font:800 24px var(--display);color:var(--green-2)}
-.scm .hg{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:4px 14px}
+.scm .hg{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:4px 14px}
 .scm .hg div{background:var(--bg);border-radius:10px;text-align:center;padding:5px 0 4px;font-size:11.5px;color:var(--muted)}
 .scm .hg b{display:grid;place-items:center;margin:2px auto;width:30px;height:30px;border-radius:8px;font:800 18px var(--display);color:var(--ink)}
 .scm .hg em{display:block;font-style:normal;font-weight:700;color:var(--ink)}
+.scm .hg .sum{background:var(--green-2);color:rgba(255,255,255,.85);font-weight:700}
+.scm .hg .sum b{color:#fff} .scm .hg .sum em{color:#fff}
+.scm .tot{margin:8px 14px 0;background:var(--green-2);color:#fff;border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.scm .tot span{font-size:12px;font-weight:800;letter-spacing:.4px;opacity:.9}
+.scm .tot b{font:800 20px var(--display)} .scm .tot small{font-size:12px;font-weight:700;opacity:.85}
 .askwrap{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:50;padding:20px}
 .askbox{background:var(--surface);color:var(--ink);border-radius:16px;padding:18px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .askbox p{margin:0 0 14px;font-size:17px}
@@ -2307,14 +2312,17 @@ function scModal(){
   const q = quotaOn(pid, d), plus = pts!==null && q!==null ? pts-q : null;
   const P = S.pairings && S.pairings[d]; let grp = '—'; if (P && P.groups) P.groups.forEach((g,i)=>{ if (g.includes(pid)) grp = i+1; });
   const tile = (l,v,style='') => `<div><span>${l}</span><b style="${style}">${v}</b></div>`;
-  const nine = (a,b) => { let g=0,pt=0,n=0; for (let h=a; h<=b; h++){ const v=+x.holes[h]; if (v>0){ g+=v; pt+=holePts(v,pars[h-1]); n++; } } return n ? `${g} · ${pt} pts` : '—'; };
+  const nine = (a,b) => { let g=0,pt=0,n=0,pr=0; for (let h=a; h<=b; h++){ pr+=pars[h-1]; const v=+x.holes[h]; if (v>0){ g+=v; pt+=holePts(v,pars[h-1]); n++; } } return {g,pt,n,pr}; };
+  const holeCell = i => { const par=pars[i], g=+x.holes[i+1]; return `<div>H${i+1} · P${par}<b class="${g?scls(g-par):''}">${g||'·'}</b><em>${g?(()=>{ const n=holePts(g,par); return n+(n===1?' pt':' pts'); })():''}</em></div>`; };
+  const sumCell = (lbl,s) => `<div class="sum">${lbl} · P${s.pr}<b>${s.n?s.g:'·'}</b><em>${s.n?s.pt+' pts':''}</em></div>`;
+  const F = has ? nine(1,9) : null, B = has ? nine(10,18) : null;
   return `<div class="scm" id="scm" role="dialog" aria-modal="true" aria-label="${esc(sname(pid))} scorecard"><div class="box">
     <div class="hd"><div><b>${esc(p ? shortName(p.name) : sname(pid))}</b><small>${fmt(d,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}${sch.course?' · '+esc(courseInfo(sch.course).name||sch.course):''}</small></div><button class="x" id="scmX" aria-label="Close">✕</button></div>
     <div class="tl">${tile('Points', pts??'—')}${tile('Strokes', t&&t.gross ? t.gross : '—')}${tile('Holes', t ? t.thru : '—')}
       ${tile('Quota', q??'—')}${tile('+/− Quota', plus===null?'—':(plus>0?'+':'')+plus, plus===null?'':`color:${plus<0?'#c62828':'var(--green-2)'}`)}${tile('Group', grp)}</div>
     ${has ? `<div class="small" style="padding:8px 16px 4px;font-weight:800;color:var(--muted)">HOLE BY HOLE</div>
-      <div class="hg">${pars.map((par,i)=>{ const g=+x.holes[i+1]; return `<div>H${i+1} · P${par}<b class="${g?scls(g-par):''}">${g||'·'}</b><em>${g?(()=>{ const n=holePts(g,par); return n+(n===1?' pt':' pts'); })():''}</em></div>`; }).join('')}</div>
-      <div class="small muted" style="padding:8px 16px 0;display:flex;justify-content:space-between"><span>Front: ${nine(1,9)}</span><span>Back: ${nine(10,18)}</span></div>`
+      <div class="hg">${[0,1,2,3,4,5,6,7,8].map(holeCell).join('')}${sumCell('OUT',F)}${[9,10,11,12,13,14,15,16,17].map(holeCell).join('')}${sumCell('IN',B)}</div>
+      <div class="tot"><span>TOTAL · Par ${F.pr+B.pr}</span><b>${F.n+B.n ? `${F.g+B.g} <small>strokes</small> · ${F.pt+B.pt} <small>pts</small>` : '—'}</b></div>`
       : `<div class="small muted" style="padding:10px 16px">${x ? 'This course’s hole pars aren’t set, so the hole-by-hole card can’t be shown.' : 'Hole-by-hole scores weren’t kept for this round. It was scored before the app or on paper.'}</div>`}
     ${has && isAdmin() && d===roundDate() ? `<div class="row" style="padding:10px 16px 0;justify-content:flex-end"><button class="btn ghost" data-clr="${esc(pid)}" style="padding:6px 12px">Clear ${esc(sname(pid))}'s scores</button></div><div class="small" id="rsMsg" style="padding:0 16px" role="status"></div>` : ''}
     <div style="height:14px"></div></div></div>`;
