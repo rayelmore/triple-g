@@ -252,6 +252,7 @@ main>*{min-width:0}
 .scm .hg{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:4px 14px}
 .scm .hg div{background:var(--bg);border-radius:10px;text-align:center;padding:5px 0 4px;font-size:11.5px;color:var(--muted)}
 .scm .hg b{display:grid;place-items:center;margin:2px auto;width:30px;height:30px;border-radius:8px;font:800 18px var(--display);color:var(--ink)}
+body.pubmode .tabbar,body.pubmode #sheet,body.pubmode .app:not(#pubview){display:none!important}
 .scm .hg em{display:block;font-style:normal;font-weight:700;color:var(--ink)}
 .scm .hg .sum{background:var(--green-2);color:rgba(255,255,255,.85);font-weight:700}
 .scm .hg .sum b{color:#fff} .scm .hg .sum em{color:#fff}
@@ -1722,6 +1723,7 @@ V.admin = () => `<main>${back()}<div class="pagehead"><h1>Admin</h1></div>
     ${ltRow('#pairings','users','Pairings','Build, publish & email Wednesday groups')}
     ${ltRow('#admsched','check','Schedule','Add, change or cancel rounds')}
     ${ltRow('#backup','shield','Season Backup','Download a season to Excel')}
+    ${ltRow('#pubboard','trophy','Public Leaderboard','A view-only link anyone can open')}
   </div></section></main>`;
 
 V.admmembers = () => {
@@ -1875,7 +1877,7 @@ document.addEventListener('click', e=>{
 });
 addEventListener('hashchange', ()=>document.querySelector('.whotip')?.remove());
 
-const ADMIN_ROUTES = new Set(['gamecoord','changelog','activity','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings']);
+const ADMIN_ROUTES = new Set(['gamecoord','changelog','activity','backup','admin','admmembers','adminvite','admsched','admcheckin','expenses','finalize','points','scorekeeper','pairtool','pairings','pubboard']);
 
 /* ---- Admin: bulk invite (create many logins at once) ---- */
 const EMRX = /[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+/;
@@ -2335,6 +2337,83 @@ document.addEventListener('keydown', e=>{ if (S.scOpen && e.key==='Escape'){ S.s
   else if (e.key==='Enter' && e.target.dataset && e.target.dataset.sco){ e.target.click(); } });
 addEventListener('hashchange', ()=>{ S.scOpen=null; });
 
+/* ---------- Public leaderboard (Nov 2026): names and scores only, at a secret link ----------
+   Any signed-in member's app copies the live board and the last few results into public/<key>
+   whenever they change. The public page reads only that one document, never the roster,
+   so phone numbers and emails stay private. Leaders turn it on and get the link in Admin. */
+S.pub = null; let pubTimer = null, pubLast = '';
+const PUB_ROUNDS = 3;
+function pubLiveHTML(d){
+  const L = S.live[d]; if (!L) return undefined;          // not loaded yet
+  const sch = schedFor(d), C = courseInfo(sch?.course), pars = C.pars;
+  const inR = id => d!==S.ciDate || !!((S.checkins||{})[id] || (S.guestsIn||{})[id]);
+  const rows = Object.values(L).filter(x=>inR(x.pid)).map(x=>{ const r=liveRow(x,pars), q=quotaOn(x.pid,d); return {...r, q, plus: q===null?null:r.pts-q}; })
+    .sort((a,b)=> (a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || (b.plus??-999)-(a.plus??-999));
+  if (!rows.length) return null;
+  let rank=0, prev=null; rows.forEach((r,i)=>{ const k=r.thru?r.toPar:null; if (k!==prev){ rank=i+1; prev=k; } r.rank = k===null?'':rank; });
+  return `<div class="tablewrap"><table class="compact lb"><thead><tr><th>#</th><th>Player</th><th class="num">Thru</th><th class="num">Par</th><th class="num">Pts</th><th class="num">Q</th><th class="num">+/−</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(sname(r.pid))}</td><td class="num">${r.final?'<b class="fin">F✓</b>':r.thru>=18?'F':esc(r.thru??'—')}</td><td class="num topar ${r.toPar<0?'u':r.toPar>0?'o':''}">${r.holes&&pars?parStr(r.toPar):'—'}${r.holes&&pars&&r.thru?`<small>${r.gross}</small>`:''}</td><td class="num">${r.pts}</td><td class="num">${r.q??'New'}</td><td class="num">${plusHtml(r.plus)}</td></tr>`).join('')}
+  </tbody></table></div>${quotaTable(d, rows)}${skinsTable(d)}${contestsTable(d, pars)}`;
+}
+function pubResultHTML(r){
+  ensureLive(r.date); if (!S.live[r.date]) return undefined;
+  const rows = ROSTER().map(p=>{ const s=scoresFor(p), v=s[r.date]; if (v===undefined) return null; const q = quotaBefore(p,s,r.date); return {p,v,q,plus: typeof v==='number' && q!==null ? v-q : null}; }).filter(Boolean)
+    .sort((a,b)=>(b.plus??-99)-(a.plus??-99));
+  if (!rows.length) return null;
+  const list = `<section class="card" style="padding:4px 16px"><div class="list">${rows.map((x,i)=>`<div class="li"><span class="medal">${typeof x.v==='number' && x.plus!==null && i<3 ? i+1 : ''}</span>
+    <div><div class="name">${esc(shortName(x.p.name))}${x.p.guest?' <span class="pill neutral">Guest</span>':''}</div><div class="small muted">${x.v==='NS'?'No show':`${x.v} pts${x.q!==null?` · quota ${x.q}`:' · new player'}`}</div></div>
+    ${x.v==='NS'?'<span class="pill bad">NS</span>':plusHtml(x.plus)}</div>`).join('')}</div></section>`;
+  return list + payoutsHTML(r.date, rows).replace(/<button[^>]*id="poCopy"[\s\S]*?<\/button>/, '');
+}
+function pubSnapshot(){
+  const d = roundDate(), sch = schedFor(d) || {};
+  const live = pubLiveHTML(d); if (live===undefined) return null;
+  const results = [], recent = allRounds().slice(-PUB_ROUNDS).reverse();
+  recent.forEach(r=>{ ensureLive(r.date); ensurePastCi(r.date); });   // start every load at once
+  for (const r of recent){ const h = pubResultHTML(r); if (h===undefined) return null; if (h) results.push({date:r.date, course:courseInfo(r.course).name||r.course, html:h}); }
+  return { v:1, live: live ? {date:d, course:courseInfo(sch.course).name||sch.course||'', html:live} : null,
+    next: live ? null : (sch.course ? {date:d, course:courseInfo(sch.course).name||sch.course} : null), results };
+}
+function pubQueue(){
+  if (!S.pub || !S.pub.on || !S.pub.key || S.dbStatus!=='ready' || !S.db || !S.db.pub) return;
+  clearTimeout(pubTimer); pubTimer = setTimeout(pubPush, 4000);
+}
+async function pubPush(){
+  let snap; try{ snap = pubSnapshot(); }catch(e){ return; } if (!snap) return;
+  const sig = S.pub.key + JSON.stringify(snap); if (sig===pubLast) return; pubLast = sig;
+  try{ await S.db.pub('public/'+S.pub.key, {...snap, at:new Date().toISOString()}); }catch(e){ pubLast=''; }
+}
+const pubLink = () => S.pub && S.pub.key ? `${location.origin}${location.pathname}?lb=${S.pub.key}` : '';
+function pubNewKey(){ const a=new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a, b=>'abcdefghjkmnpqrstuvwxyz23456789'[b%31]).join(''); }
+V.pubboard = () => {
+  const on = !!(S.pub && S.pub.on && S.pub.key), link = pubLink();
+  return `<main>${back()}<div class="pagehead"><h1>Public Leaderboard</h1></div>
+  <div class="muted">A view-only page anyone can open with the link, no login needed. It shows the live leaderboard during a round, then the results and payouts for the last ${PUB_ROUNDS} rounds. Names and scores only, never phone numbers or emails.</div>${dbNote()}
+  <section class="card">${on ? `<h2>Link is on</h2>
+    <div class="small" style="word-break:break-all;background:var(--bg);border-radius:10px;padding:10px;margin:8px 0">${esc(link)}</div>
+    <div class="row"><button class="btn" id="pbCopy">Copy link</button><a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener">Open it</a></div>
+    <div class="small muted" style="margin-top:10px">It updates by itself a few seconds after scores change, as long as someone in the group has the app open (the scorers always do).</div>
+    <div class="row" style="margin-top:14px"><button class="btn ghost" id="pbNew">Make a new link</button><button class="btn ghost danger" id="pbOff">Turn off</button></div>
+    <div class="small muted" style="margin-top:6px">A new link stops the old one from working. Use it if the link got passed around too far.</div>`
+  : `<h2>Link is off</h2><div class="small muted" style="margin-bottom:10px">Turning it on makes a private web address you can share in the group chat or with family and friends.</div><button class="btn" id="pbOn">Turn on</button>`}
+  <div class="small" id="pbMsg" role="status" style="margin-top:8px"></div></section></main>`;
+};
+document.addEventListener('click', async e=>{
+  const t = e.target.closest('#pbOn,#pbNew,#pbOff,#pbCopy'); if (!t || !isAdmin()) return;
+  const msg = live$('pbMsg');
+  if (t.id==='pbCopy'){ try{ await navigator.clipboard.writeText(pubLink()); msg.textContent='Link copied. Paste it in the group chat.'; }catch(_){ msg.textContent='Press and hold the link above to copy it.'; } return; }
+  const old = S.pub && S.pub.key;
+  if (t.id==='pbOff' && !confirm('Turn off the public leaderboard? The link will stop working.')) return;
+  if (t.id==='pbNew' && !confirm('Make a new link? The old link will stop working.')) return;
+  t.disabled = true; msg.textContent = 'Saving…';
+  try{
+    if (old && t.id!=='pbOn') await S.db.pubDel('public/'+old).catch(()=>{});
+    const v = t.id==='pbOff' ? {kind:'publicboard', on:false, key:''} : {kind:'publicboard', on:true, key:(t.id==='pbOn' && old) ? old : pubNewKey()};
+    await S.db.doc('settings/publicboard').set({...v, by:S.meFull||'', at:new Date().toISOString()});
+    S.pub = v; pubLast = ''; render(); pubQueue();
+  }catch(err){ t.disabled=false; msg.textContent='Couldn’t save. The database rules may need the public leaderboard section added (see Ray).'; }
+});
+
 /* ---------- Game Coordinator (leaders): who's in, who's paid, pots and groups for the round ----------
    Randy collects skins, Coach collects the CTP + quota game. Each checkmark is its own record
    (gcpay/<date>/marks/<player>_<skins|game>), so two leaders can check boxes at the same time. */
@@ -2775,6 +2854,7 @@ function render(){
   if (Object.keys(typed).length) document.querySelectorAll('#view input:not([type=checkbox]), #view textarea').forEach(el=>{ const k=fk(el); if (k in typed) el.value=typed[k]; });
   document.querySelectorAll('.tabbar a').forEach(x=>x.setAttribute('aria-current', x.getAttribute('href')==='#'+TABS[r] ? 'page':'false'));
   if (fid && fid!=='sheetClose'){ const el=document.getElementById(fid); if (el && !el.closest('#sheet')){ el.focus(); try{ if(pos!=null) el.setSelectionRange(pos,pos);}catch(e){} } }
+  pubQueue();
 }
 addEventListener('hashchange', ()=>{ render(); scrollTo(0,0); });
 document.addEventListener('input', e=>{ const t=e.target;
@@ -3017,7 +3097,7 @@ window.bootDB = (db, prof, fbUser) => {
     ensureLive(S.ciDate);
     db.collection('pairings').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.date){ v.groups=(v.groups||[]).map(g=>Array.isArray(g)?g:(g&&Array.isArray(g.ids)?g.ids:[])); m[v.date]=v; } }); S.pairings=m; render(); }, ()=>{});
     db.collection('courses').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v._id) m[v._id]=v; else if (v&&v.key) m[v.key]=v; }); S.courses=m; render(); }, ()=>{});
-    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; if (v && (v._id==='backups' || v.kind==='backups')) S.backups=v; }); render(); }, ()=>{});
+    db.collection('settings').onSnapshot(snap=>{ docsOf(snap).forEach(v=>{ if (v && (v._id==='points' || v.kind==='points')) S.points=v; if (v && (v._id==='games' || v.kind==='games')) S.games=v; if (v && (v._id==='welcome' || v.kind==='welcome')) S.welcome=v; if (v && (v._id==='publicboard' || v.kind==='publicboard')) S.pub=v; if (v && (v._id==='backups' || v.kind==='backups')) S.backups=v; }); render(); }, ()=>{});
     db.collection('ethics').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.pid) m[v.pid]=v; }); S.ethics=m; S.ethicsLoaded=true; render(); }, ()=>{});
     db.collection('side').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ if(v&&v.id&&v.date) m[v.id]=v; }); S.side=m; render(); }, ()=>{});
     db.collection('requests').onSnapshot(snap=>{ const m={}; docsOf(snap).forEach(v=>{ const id=v&&(v.id||v._id); if(id&&v.at){ v._id=id; m[id]=v; } }); S.requests=m; render(); }, ()=>{});
@@ -3072,7 +3152,10 @@ const db = {
   recent: (n, beforeAt) => getDocs(query(collection(fs, 'auditlog'), orderBy('at', 'desc'), ...(beforeAt ? [where('at', '<', beforeAt)] : []), limit(n)))
     .then(s => s.docs.map(d => ({ _id: d.id, ...d.data() }))),
   // App Activity page (organizer only; the database rules block everyone else)
-  seen: () => getDocs(collection(fs, 'seen')).then(s => s.docs.map(d => ({ _id: d.id, ...d.data() })))
+  seen: () => getDocs(collection(fs, 'seen')).then(s => s.docs.map(d => ({ _id: d.id, ...d.data() }))),
+  // Public leaderboard copy: written often, so it skips the Change History log
+  pub: (p, v) => setDoc(doc(fs, p), JSON.parse(JSON.stringify(v))),
+  pubDel: p => deleteDoc(doc(fs, p))
 };
 
 /* ---------- App Activity: note when each member opens the app ----------
@@ -3184,7 +3267,38 @@ async function start(user){
   SEEN = { uid:user.uid, pid:prof.pid||'', email, name:prof.name||'' }; markSeen();
   if (!booted){ booted=true; window.bootDB(db, prof, user); } else location.reload();
 }
-onAuthStateChanged(auth, user => { if (booted && !user){ location.reload(); return; } start(user); });
+/* ---------- Public leaderboard page (?lb=<key>): no login, reads only public/<key> ---------- */
+async function publicView(key){
+  document.body.classList.add('pubmode'); hideGate();
+  const box = document.createElement('div'); box.id = 'pubview'; box.className = 'app'; document.body.prepend(box);
+  box.innerHTML = `<div class="topbar"><img src="3g-icon.png" alt="">Triple-G Leaderboard</div><main><div class="muted">Loading…</div></main>`;
+  const m = box.querySelector('main');
+  let purify;
+  try{ purify = (await import('https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.es.mjs')).default; }
+  catch(e){ m.innerHTML = '<div class="card">Couldn’t load the leaderboard. Check your connection and reload.</div>'; return; }
+  const clean = h => purify.sanitize(String(h||''), { FORBID_TAGS:['form','input','button','textarea','select','iframe'] });
+  const f = (d, o) => new Date(d+'T12:00:00').toLocaleDateString('en-US', o);
+  let snap = null, sel = 0;
+  const draw = () => {
+    if (!snap){ m.innerHTML = '<div class="card">This leaderboard link isn’t active. Ask a Triple-G leader for the current link.</div>'; return; }
+    let h = `<div class="small muted">View only · updated ${esc(new Date(snap.at).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</div>`;
+    if (snap.live) h += `<div class="pagehead"><h1>Live Leaderboard</h1><span class="livepill">LIVE</span></div>
+      <div class="muted">${esc(f(snap.live.date,{weekday:'long',month:'short',day:'numeric'}))} · ${esc(snap.live.course)} · Stableford points against quota</div>${clean(snap.live.html)}`;
+    else if (snap.next) h += `<section class="card"><h2>Next round</h2><div>${esc(f(snap.next.date,{weekday:'long',month:'long',day:'numeric'}))} · ${esc(snap.next.course)}</div>
+      <div class="small muted" style="margin-top:4px">The live leaderboard shows here once scoring starts.</div></section>`;
+    const R = snap.results || [];
+    if (R.length){ sel = Math.min(sel, R.length-1);
+      h += `<div class="pagehead" style="margin-top:10px"><h1>Results</h1></div>
+      <select id="pubSel" aria-label="Choose a round">${R.map((r,i)=>`<option value="${i}"${i===sel?' selected':''}>${esc(f(r.date,{month:'short',day:'numeric',year:'numeric'}))} · ${esc(r.course)}</option>`).join('')}</select>${clean(R[sel].html)}`; }
+    m.innerHTML = h;
+  };
+  box.addEventListener('change', e => { if (e.target.id==='pubSel'){ sel = +e.target.value; draw(); } });
+  if (!/^[a-z0-9]{8,40}$/.test(key)){ draw(); return; }
+  onSnapshot(doc(fs, 'public/'+key), s => { snap = s.exists() ? s.data() : null; draw(); }, () => { snap = null; draw(); });
+}
+const PUBKEY = new URLSearchParams(location.search).get('lb');
+if (PUBKEY !== null) publicView(PUBKEY);
+else onAuthStateChanged(auth, user => { if (booted && !user){ location.reload(); return; } start(user); });
 </script>
 
 </body>
