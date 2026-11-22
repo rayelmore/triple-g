@@ -2365,18 +2365,32 @@ function pubResultHTML(r){
     ${x.v==='NS'?'<span class="pill bad">NS</span>':plusHtml(x.plus)}</div>`).join('')}</div></section>`;
   return list + payoutsHTML(r.date, rows).replace(/<button[^>]*id="poCopy"[\s\S]*?<\/button>/, '');
 }
+const PUB_SIDE_DAYS = 3;   // finished side rounds stay on the public page this many days
+function pubSideHTML(r){
+  const k='sr:'+r.id; sideSub(r.id); if (!S.live[k]) return undefined;
+  const pars=courseInfo(r.course).pars, rows=sideRows(k).sort((a,b)=>(a.thru?a.toPar:999)-(b.thru?b.toPar:999) || (b.thru||0)-(a.thru||0) || sname(a.pid).localeCompare(sname(b.pid)));
+  if (!rows.length) return null;
+  let rank=0, prev=null; rows.forEach((x,i)=>{ const kk=x.thru?x.toPar:null; if (kk!==prev){ rank=i+1; prev=kk; } x.rank=kk===null?'':rank; });
+  const table = `<div class="tablewrap"><table class="compact"><thead><tr><th class="num">Pos</th><th>Player</th><th class="num">Thru</th><th class="num">To par</th><th class="num">Strokes</th></tr></thead><tbody>
+  ${rows.map(x=>`<tr><td class="num">${x.rank}</td><td><b>${esc(sname(x.pid))}</b>${x.guest?' <span class="small muted">guest</span>':''}</td><td class="num">${x.final?'<b class="fin">F✓</b>':x.thru===18?'F':esc(x.thru??'—')}</td><td class="num topar ${x.toPar<0?'u':x.toPar>0?'o':''}">${x.thru&&pars?parStr(x.toPar):'—'}</td><td class="num">${x.gross??'—'}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  return r.date===todayISO() ? table + skinsTable(k) + contestsTable(k, pars) : table + payoutsHTML(k, sidePayRows(k)).replace(/<button[^>]*id="poCopy"[\s\S]*?<\/button>/, '');
+}
 function pubSnapshot(){
   const d = roundDate(), sch = schedFor(d) || {};
   const live = pubLiveHTML(d); if (live===undefined) return null;
   const results = [], recent = allRounds().slice(-PUB_ROUNDS).reverse();
   recent.forEach(r=>{ ensureLive(r.date); ensurePastCi(r.date); });   // start every load at once
   for (const r of recent){ const h = pubResultHTML(r); if (h===undefined) return null; if (h) results.push({date:r.date, course:courseInfo(r.course).name||r.course, html:h}); }
-  return { v:1, live: live ? {date:d, course:courseInfo(sch.course).name||sch.course||'', html:live} : null,
+  const t=todayISO(), from=new Date(Date.now()-PUB_SIDE_DAYS*864e5).toISOString().slice(0,10), side=[];
+  for (const r of sideList().filter(r=>r.date<=t && r.date>=from)){ const h=pubSideHTML(r); if (h===undefined) return null;
+    if (h) side.push({date:r.date, time:r.time?fmtTee(r.time):'', course:courseInfo(r.course).name||r.course||'Side round', live:r.date===t, html:h}); }
+  return { v:1, side, live: live ? {date:d, course:courseInfo(sch.course).name||sch.course||'', html:live} : null,
     next: live ? null : (sch.course ? {date:d, course:courseInfo(sch.course).name||sch.course} : null), results };
 }
 function pubQueue(){
   if (!S.pub || !S.pub.on || !S.pub.key || S.dbStatus!=='ready' || !S.db || !S.db.pub) return;
-  clearTimeout(pubTimer); pubTimer = setTimeout(pubPush, 4000);
+  if (pubTimer) return; pubTimer = setTimeout(()=>{ pubTimer = null; pubPush(); }, 4000);   // at most one copy every 4 seconds
 }
 async function pubPush(){
   let snap; try{ snap = pubSnapshot(); }catch(e){ return; } if (!snap) return;
@@ -2388,7 +2402,7 @@ function pubNewKey(){ const a=new Uint8Array(12); crypto.getRandomValues(a); ret
 V.pubboard = () => {
   const on = !!(S.pub && S.pub.on && S.pub.key), link = pubLink();
   return `<main>${back()}<div class="pagehead"><h1>Public Leaderboard</h1></div>
-  <div class="muted">A view-only page anyone can open with the link, no login needed. It shows the live leaderboard during a round, then the results and payouts for the last ${PUB_ROUNDS} rounds. Names and scores only, never phone numbers or emails.</div>${dbNote()}
+  <div class="muted">A view-only page anyone can open with the link, no login needed. It shows the live leaderboard during a round, then the results and payouts for the last ${PUB_ROUNDS} rounds. Side rounds show too, live on the day and for ${PUB_SIDE_DAYS} days after. Names and scores only, never phone numbers or emails.</div>${dbNote()}
   <section class="card">${on ? `<h2>Link is on</h2>
     <div class="small" style="word-break:break-all;background:var(--bg);border-radius:10px;padding:10px;margin:8px 0">${esc(link)}</div>
     <div class="row"><button class="btn" id="pbCopy">Copy link</button><a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener">Open it</a></div>
@@ -3286,6 +3300,9 @@ async function publicView(key){
       <div class="muted">${esc(f(snap.live.date,{weekday:'long',month:'short',day:'numeric'}))} · ${esc(snap.live.course)} · Stableford points against quota</div>${clean(snap.live.html)}`;
     else if (snap.next) h += `<section class="card"><h2>Next round</h2><div>${esc(f(snap.next.date,{weekday:'long',month:'long',day:'numeric'}))} · ${esc(snap.next.course)}</div>
       <div class="small muted" style="margin-top:4px">The live leaderboard shows here once scoring starts.</div></section>`;
+    const SR = snap.side || [];
+    SR.forEach(r => { h += `<div class="pagehead" style="margin-top:10px"><h1 style="font-size:24px">Side Round${r.live?'':' Results'}</h1>${r.live?'<span class="livepill">LIVE</span>':''}</div>
+      <div class="muted">${esc(f(r.date,{weekday:'long',month:'short',day:'numeric'}))}${r.time?' · '+esc(r.time):''} · ${esc(r.course)} · doesn’t count toward Wednesday</div>${clean(r.html)}`; });
     const R = snap.results || [];
     if (R.length){ sel = Math.min(sel, R.length-1);
       h += `<div class="pagehead" style="margin-top:10px"><h1>Results</h1></div>
