@@ -650,15 +650,16 @@ V.standings = () => {
   const R = ROSTER().filter(p=>p.st.rounds>=min);
   const cols = [
     {key:'name', label:'Player', val:p=>shortName(p.name)},
-    {key:'avg', label:'Avg', num:true, val:p=>p.st.avg, html:p=>p.st.avg.toFixed(1)},
+    {key:'quota', label:'Quota', num:true, val:p=>p.guest? null : p.st.quota, html:p=>!p.guest && p.st.quota!==null? `<b>${p.st.quota}</b>` : '—'},
+    {key:'avg', label:'Season avg', num:true, val:p=>p.st.avg, html:p=>p.st.avg.toFixed(1)},
     {key:'rounds', label:'Rds', num:true, val:p=>p.st.rounds},
     {key:'best', label:'Best', num:true, val:p=>p.st.best},
     {key:'beat', label:'Beat quota', num:true, val:p=>p.st.tries? p.st.beat/p.st.tries : null, html:p=>p.st.tries? `${p.st.beat}/${p.st.tries}` : '—'},
   ];
   return `<main><div class="pagehead"><h1>2026 Standings</h1></div>
   <div class="row"><label for="minR" class="small">Minimum rounds</label><select id="minR">${[1,5,10,20].map(n=>`<option${n===min?' selected':''}>${n}</option>`).join('')}</select><span class="muted small">${R.length} players · tap a column to sort</span></div>
-  ${sortable('st', R, cols, 'avg')}
-  <div class="small muted">Beat quota counts rounds where a player matched or beat the average of their previous 3 rounds.</div></main>`;
+  ${sortable('st', R, cols, 'quota')}
+  <div class="small muted">Quota is the average of a player's last 3 Wednesday rounds, rounded to the nearest whole point. It carries over into the new season. Side rounds don't count. Beat quota counts rounds where a player matched or beat the quota they had going into that round.</div></main>`;
 };
 V.schedule = () => {
   const t=todayISO(), have=new Set(allRounds().map(r=>r.date));
