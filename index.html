@@ -1418,6 +1418,7 @@ document.addEventListener('input', e=>{ const t=e.target; if (!t.dataset.hs) ret
 
 /* ---- Game Coordinator (payouts & winners) ---- */
 /* ---- Pairings ---- */
+const PT_MAX = 4; /* most players allowed in one pairing group */
 const playingIds = () => [...Object.keys(S.checkins||{}), ...Object.keys(S.guestsIn||{})];
 function ptState(){
   const d = roundDate();
@@ -1447,7 +1448,7 @@ V.pairtool = () => {
   ${st.groups.map((g,gi)=>{ const qs=g.map(curQuota).filter(q=>q!==null);
     return `<div class="grp"><h3><span>Group ${gi+1} · ${teeAt(sch?.time, gi, st.interval)}</span><span class="muted small">${g.length} players${qs.length?` · avg quota ${Math.round(qs.reduce((a,b)=>a+b,0)/qs.length)}`:''}</span></h3>
     ${g.map(id=>`<div class="pl">${avatar(PBY[id]||{name:id},true)}<span>${esc(pname(id))} <span class="muted small">${curQuota(id)??'new'}</span></span>
-      <select data-mv="${id}" aria-label="Move ${esc(pname(id))}">${st.groups.map((_,k)=>`<option value="${k}"${k===gi?' selected':''}>Grp ${k+1}</option>`).join('')}</select>
+      <select data-mv="${id}" aria-label="Move ${esc(pname(id))}">${st.groups.map((gg,k)=>`<option value="${k}"${k===gi?' selected':''}${k!==gi&&gg.length>=PT_MAX?' disabled':''}>Grp ${k+1}${k!==gi&&gg.length>=PT_MAX?' (full)':''}</option>`).join('')}</select>
       <button class="xbtn" data-rm="${id}" aria-label="Remove ${esc(pname(id))}">×</button></div>`).join('')}</div>`; }).join('')}
   <section class="card"><div class="row"><label for="ptAdd" class="small">Add player</label><select id="ptAdd"><option value="">Choose…</option>
     ${waiting.length?`<optgroup label="Checked in">${waiting.map(id=>`<option value="${id}">${esc(pname(id))}</option>`).join('')}</optgroup>`:''}
@@ -1634,8 +1635,11 @@ document.addEventListener('click', async e=>{ if (!e.target.closest('#phDel') ||
 document.addEventListener('change', e=>{ const t=e.target;
   if (t.id==='lbGroup'){ S.lbGroup = t.value==='all'?'all':+t.value; render(); }
   else if (t.id==='ptInt'){ const v=+t.value; if (v>=5&&v<=20){ ptState().interval=v; S.pt.dirty=true; } render(); }
-  else if (t.dataset.mv){ const st=ptState(), id=t.dataset.mv; st.groups.forEach(g=>{ const i=g.indexOf(id); if(i>=0) g.splice(i,1); }); st.groups[+t.value].push(id); st.groups=st.groups.filter(g=>g.length); st.dirty=true; render(); }
-  else if (t.id==='ptAdd' && t.value){ const st=ptState(); if (!st.groups.length) st.groups.push([]); const small = st.groups.reduce((m,g,i)=>g.length<st.groups[m].length?i:m,0); st.groups[small].push(t.value); st.dirty=true; render(); }
+  else if (t.dataset.mv){ const st=ptState(), id=t.dataset.mv; const to=st.groups[+t.value]; if (to && !to.includes(id) && to.length>=PT_MAX){ live$('ptMsg').textContent=`Group ${+t.value+1} already has ${PT_MAX} players.`; render(); return; } st.groups.forEach(g=>{ const i=g.indexOf(id); if(i>=0) g.splice(i,1); }); st.groups[+t.value].push(id); st.groups=st.groups.filter(g=>g.length); st.dirty=true; render(); }
+  else if (t.id==='ptAdd' && t.value){ const st=ptState(); if (!st.groups.length) st.groups.push([]);
+    /* fill the newest group first (the one being built), then any earlier group with room, else start a new group */
+    let gi = st.groups.length-1; if (st.groups[gi].length>=PT_MAX){ gi = st.groups.findIndex(g=>g.length<PT_MAX); if (gi<0){ st.groups.push([]); gi=st.groups.length-1; } }
+    st.groups[gi].push(t.value); st.dirty=true; render(); }
   else if (t.id==='fzDate'){ S.fzDate=t.value; S.fzDraft=null; render(); }
   else if (t.dataset.ns){ S.fzDraft[t.dataset.ns] = t.checked ? 'NS' : (S.live[S.fzDraft._d]?.[t.dataset.ns]?.pts ?? ''); render(); }
   else if (t.dataset.fz){ S.fzDraft[t.dataset.fz] = t.value; render(); }
