@@ -1701,6 +1701,18 @@ document.addEventListener('click', async e=>{
 const BASE_SCHED = SEED.schedule.map(r=>({...r}));
 const composeName = (f,n,l) => n ? `${f} (${n}) ${l}`.trim() : `${f} ${l}`.trim();
 function splitName(n){ const w=shortName(n).split(' '); return {first:w[0]||'', last:w.slice(1).join(' '), nick:nick(n)}; }
+/* WhatsApp: export active members' phones as a contact card file (.vcf) the phone can import */
+function waPhone(raw){ const d=String(raw||'').replace(/\D/g,''); if (!d) return '';
+  if (String(raw).trim().startsWith('+')) return '+'+d; if (d.length===10) return '+1'+d; if (d.length===11 && d[0]==='1') return '+'+d; return ''; }
+function waExport(){
+  const act = SEED.players.filter(p=>!p.guest && !p.inactive && !(S.guestBook||{})[p.id]);
+  const vc = v => String(v||'').replace(/\\/g,'\\\\').replace(/[,;]/g,m=>'\\'+m);
+  const ok = [], bad = [];
+  act.forEach(p=>{ const ph=waPhone(p.phone); (ph?ok:bad).push({p,ph}); });
+  const cards = ok.map(({p,ph})=>{ const n=splitName(p.name);
+    return ['BEGIN:VCARD','VERSION:3.0',`N:${vc(n.last)};${vc(n.first)};;;`,`FN:${vc((n.first+' '+n.last).trim())}`, n.nick?`NICKNAME:${vc(n.nick)}`:'', 'ORG:Triple-G (3G)', `TEL;TYPE=CELL:${ph}`, p.email?`EMAIL:${p.email}`:'', 'END:VCARD'].filter(Boolean).join('\r\n'); });
+  return {cards, ok, bad};
+}
 function rebuildSNAME(){
   const base = p => { const nk = nick(p.name); return nk ? nk.replace(/["“”]/g,'') : shortName(p.name).split(' ')[0]; };
   const list = SEED.players.filter(p=>!(S.guestBook||{})[p.id]); const count={};
@@ -1766,6 +1778,7 @@ V.admmembers = () => {
   return `<main><a href="#admin" class="small">← Admin</a><div class="pagehead"><h1>Members</h1><button class="btn gold" id="amNew">+ Add member</button></div>${dbNote()}
   ${ed==='new'?form('new'):''}
   <div class="seg" role="group" aria-label="Show">${[['members','Members'],['guests','Regular guests'],['inactive','Inactive']].map(([k,l])=>`<button data-amshow="${k}" aria-pressed="${show===k}">${l} (${cnt(k)})</button>`).join('')}</div>
+  <div class="row"><button class="btn ghost" id="amWa">Export phones for WhatsApp</button><span class="small" id="amWaMsg" role="status"></span></div>
   <input type="search" id="amq" value="${esc(S.amq||'')}" placeholder="Find a member" aria-label="Find a member">
   <section class="card" style="padding:4px 16px"><div class="list">
   ${R.length ? R.map(p=>`<div><div class="li" style="grid-template-columns:auto 1fr auto">${avatar(p,true)}<div><div class="name">${esc(shortName(p.name))}${nick(p.name)?` <span class="muted small">“${esc(nick(p.name))}”</span>`:''}${p.auto?' <span class="pill neutral">Regular</span>':''}</div><div class="small muted">${[p.phone,p.email].filter(Boolean).map(esc).join(' · ')||(stats(p).rounds?`${stats(p).rounds} rounds in 2026`:'No rounds yet')}</div></div><button class="btn ghost" data-amedit="${p.id}" style="padding:6px 12px">Edit</button></div>${ed===p.id?form(p.id):''}</div>`).join('') : '<div class="li"><span class="muted">Nobody here.</span></div>'}
@@ -1799,6 +1812,11 @@ V.admsched = () => {
 document.addEventListener('click', async e=>{
   const b = e.target.closest('#amNew,#amCancel,#amSave,[data-amedit],[data-amshow],#asNew,#asCancelEd,#asSave,#asDel,[data-asedit],[data-aspast]'); if (!b) return;
   if (b.id==='amNew'){ S.amEdit='new'; render(); $('#amFirst')?.focus(); }
+  else if (b.id==='amWa'){ const {cards, ok, bad} = waExport(), m=live$('amWaMsg');
+    if (!cards.length){ m.textContent='No active members have a usable phone number yet.'; return; }
+    const url=URL.createObjectURL(new Blob([cards.join('\r\n')+'\r\n'],{type:'text/vcard'})), a=document.createElement('a');
+    a.href=url; a.download='3G-WhatsApp-contacts.vcf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    m.textContent = `${ok.length} contact${ok.length===1?'':'s'} exported.` + (bad.length ? ` No usable phone for: ${bad.map(x=>shortName(x.p.name)).join(', ')}.` : ''); }
   else if (b.id==='amCancel'){ S.amEdit=null; render(); }
   else if (b.dataset.amedit){ S.amEdit = S.amEdit===b.dataset.amedit ? null : b.dataset.amedit; render(); }
   else if (b.dataset.amshow){ S.amShow=b.dataset.amshow; render(); }
