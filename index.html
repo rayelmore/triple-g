@@ -1153,18 +1153,27 @@ document.addEventListener('change', e=>{ const t=e.target; if (!t.dataset || !t.
 
 /* ---- Score my group (pick players at the course, then score hole by hole) ---- */
 const GKEY = d => '3g-group-'+d;
+/* who a member may score once pairings are published:
+   their own group + any checked-in player not in a group. Leaders, draft/no pairings → no limit. */
+function scoreScope(d, inRound){
+  const P=S.pairings[d]; if (isAdmin() || !P || P.status!=='published' || !P.groups.length) return null;
+  const me=meId(), mine=P.groups.findIndex(g=>g.includes(me)), paired=new Set(P.groups.flat());
+  const allowed=new Set(mine<0 ? [] : [...P.groups[mine], ...[...inRound].filter(id=>!paired.has(id))]);
+  return {mine, allowed, paired};
+}
 /* published pairings → one-tap scoring group */
 function pairGroupsHTML(d, inRound){
   const P=S.pairings[d]; if (!P || P.status!=='published' || !P.groups.length) return '';
-  const me=meId(), sch=schedFor(d);
-  const order=P.groups.map((g,i)=>({g,i})).sort((a,b)=>(b.g.includes(me))-(a.g.includes(me)));
+  const me=meId(), sch=schedFor(d), lim=scoreScope(d, inRound);
+  const order=P.groups.map((g,i)=>({g,i})).filter(({i})=>!lim || i===lim.mine).sort((a,b)=>(b.g.includes(me))-(a.g.includes(me)));
   return `<section class="card" style="padding:12px 14px"><h2 style="margin:0 0 4px">Score a pairing group</h2><div class="small muted">Tap your group to start scoring it.</div>
   <div class="gsug">${order.map(({g,i})=>{ const ids=g.filter(id=>inRound.has(id)&&PBY[id]); if (!ids.length) return '';
     return `<button type="button" data-pgrp="${i}">${g.includes(me)?'<b>Your group</b> · ':''}Group ${i+1} · ${teeAt(P.base||sch?.time,i,P.interval||8)}<span>${ids.map(id=>esc(sname(id))).join(', ')}${ids.length<g.length?' · '+(g.length-ids.length)+' not checked in':''}</span></button>`; }).join('')}</div>
-  <div class="small muted" style="margin-top:8px">Or pick players yourself below.</div></section>`;
+  <div class="small muted" style="margin-top:8px">${lim?'Below you can also add a checked-in player who isn’t in a group yet.':'Or pick players yourself below.'}</div></section>`;
 }
 document.addEventListener('click', e=>{ const b=e.target.closest('[data-pgrp]'); if (!b) return;
   const d=roundDate(), P=S.pairings[d]; if (!P) return; const inR=new Set([...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})]);
+  const lim=scoreScope(d, inR); if (lim && +b.dataset.pgrp!==lim.mine) return;
   const ids=(P.groups[+b.dataset.pgrp]||[]).filter(id=>inR.has(id)&&PBY[id]).slice(0,5); if (!ids.length) return;
   setGroup(d, ids); S.pickOpen=false; S.pick=null; S.pq=''; S.draft=null; render(); scrollTo(0,0); });
 function myGroup(d){ if (S.myGroup && S.myGroup.d===d) return S.myGroup.ids; try{ const v=JSON.parse(localStorage.getItem(GKEY(d))||'null'); if (Array.isArray(v)){ S.myGroup={d,ids:v}; return v; } }catch(e){} return null; }
@@ -1188,15 +1197,19 @@ V.score = () => {
   const d = roundDate(), sch = schedFor(d), C = courseInfo(sch?.course), pars = C.pars, L = S.live[d] || {};
   ensureLive(d);
   const inRound = new Set(d===S.ciDate ? [...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})] : []);
-  const ids0 = myGroup(d), ids = ids0 ? ids0.filter(id=>inRound.has(id) && PBY[id]) : null;
+  const lim = scoreScope(d, inRound), okId = id => !lim || lim.allowed.has(id);
+  const ids0 = myGroup(d), ids = ids0 ? ids0.filter(id=>inRound.has(id) && PBY[id] && okId(id)) : null;
   const head = `<div class="cbar">${esc(C.name||sch?.course||'Course')}</div>` + sideNudge(d);
+  if (lim && lim.mine<0) return `<main>${back()}${head}<h1 style="margin:0;font:800 24px var(--display)">You're not in a group for this round</h1>
+    <div class="banner" style="margin-top:10px">Only players in a pairing group can score. Ask a leader to add you to a group, then come back here.</div>
+    <div class="row"><a class="btn ghost" href="#leaderboard">See the leaderboard</a></div></main>`;
   if (!ids || !ids.length || S.pickOpen){
     const sel = new Set((S.pick || ids || []).filter(id=>inRound.has(id)));
     const q = (S.pq||'').toLowerCase();
-    const R = [...inRound].filter(id=>PBY[id]).sort((a,b)=>sname(a).localeCompare(sname(b))).sort((a,b)=>sname(a).localeCompare(sname(b))).filter(id=>!q || sname(id).toLowerCase().includes(q) || PBY[id].name.toLowerCase().includes(q));
+    const R = [...inRound].filter(id=>PBY[id] && okId(id)).sort((a,b)=>sname(a).localeCompare(sname(b))).sort((a,b)=>sname(a).localeCompare(sname(b))).filter(id=>!q || sname(id).toLowerCase().includes(q) || PBY[id].name.toLowerCase().includes(q));
     return `<main>${back()}${head}<h1 style="margin:0;font:800 24px var(--display)">Select up to five players to score for</h1>
     <div class="muted small">${fmt(d,{weekday:'long',month:'short',day:'numeric'})} · ${inRound.size} checked in · ${sel.size} selected</div>${dbNote()}
-    ${S.dbStatus==='ready' && !inRound.size ? `<div class="banner">Nobody is checked in for this round yet. Players (and their guests) must check in on the home screen before they can be scored.</div>` : '<div class="small muted">Only players and guests checked in for this round appear here.</div>'}
+    ${S.dbStatus==='ready' && !inRound.size ? `<div class="banner">Nobody is checked in for this round yet. Players (and their guests) must check in on the home screen before they can be scored.</div>` : (lim ? '<div class="small muted">You can score your own group, plus anyone checked in who isn’t in a group yet.</div>' : '<div class="small muted">Only players and guests checked in for this round appear here.</div>')}
     ${pairGroupsHTML(d, inRound)}
     <input type="search" id="pq" value="${esc(S.pq||'')}" placeholder="Find a player" aria-label="Find a player">
     <div class="row"><button class="btn" id="pickGo" ${sel.size?'':'disabled'}>Start scoring</button>${ids?'<button class="btn ghost" id="pickCancel">Cancel</button>':''}</div>
@@ -1305,7 +1318,7 @@ document.addEventListener('click', async e=>{
       for (const e of Object.values(S.ctp[d]||{})) await S.db.doc(`ctp/${d}/entries/${e.hole}_${e.pid}`).delete();
       S.draft=null; render(); }
     catch(err){ live$('rsMsg').textContent=noWriteC; b.disabled=false; } }
-  else if (b.id==='pickGo'){ const inR=new Set([...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})]); setGroup(d, [...(S.pick||myGroup(d)||[])].filter(id=>inR.has(id)).slice(0,5)); S.pickOpen=false; S.pick=null; S.pq=''; S.draft=null; render(); scrollTo(0,0); }
+  else if (b.id==='pickGo'){ const inR=new Set([...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})]), lim=scoreScope(d, inR); setGroup(d, [...(S.pick||myGroup(d)||[])].filter(id=>inR.has(id) && (!lim || lim.allowed.has(id))).slice(0,5)); S.pickOpen=false; S.pick=null; S.pq=''; S.draft=null; render(); scrollTo(0,0); }
   else if (b.id==='pickCancel'){ S.pickOpen=false; S.pick=null; render(); }
   else if (b.id==='pickOpen'){ const inR=new Set([...Object.keys(S.checkins), ...Object.keys(S.guestsIn||{})]); S.pickOpen=true; S.pick=[...(myGroup(d)||[])].filter(id=>inR.has(id)); render(); scrollTo(0,0); }
   else if (b.id==='ctpAdd'){
