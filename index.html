@@ -1810,7 +1810,7 @@ V.admsched = () => {
 };
 
 document.addEventListener('click', async e=>{
-  const b = e.target.closest('#amNew,#amCancel,#amSave,[data-amedit],[data-amshow],#asNew,#asCancelEd,#asSave,#asDel,[data-asedit],[data-aspast]'); if (!b) return;
+  const b = e.target.closest('#amNew,#amWa,#amCancel,#amSave,[data-amedit],[data-amshow],#asNew,#asCancelEd,#asSave,#asDel,[data-asedit],[data-aspast]'); if (!b) return;
   if (b.id==='amNew'){ S.amEdit='new'; render(); $('#amFirst')?.focus(); }
   else if (b.id==='amWa'){ const {cards, ok, bad} = waExport(), m=live$('amWaMsg');
     if (!cards.length){ m.textContent='No active members have a usable phone number yet.'; return; }
